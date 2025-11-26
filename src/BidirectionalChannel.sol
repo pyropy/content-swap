@@ -97,6 +97,22 @@ contract BidirectionalChannel is ReentrancyGuard {
     }
 
     /**
+     * @dev Fund and open the channel in a single transaction
+     */
+    function fundAndOpenChannel() external payable onlyParticipants inState(State.FUNDING) {
+        require(block.timestamp <= fundingDeadline, "Funding deadline passed");
+        require(msg.value > 0, "Must send funds");
+
+        deposits[msg.sender] += msg.value;
+        channelBalance += msg.value;
+
+        emit ChannelFunded(channelBalance);
+
+        channelState = State.OPEN;
+        emit ChannelOpened(partyA, partyB, channelBalance, deposits[partyA], deposits[partyB]);
+    }
+
+    /**
      * @dev Submit a revocation secret to revoke an old commitment
      * @param commitmentHash Hash of the commitment being revoked
      * @param revocationSecret The secret that proves revocation

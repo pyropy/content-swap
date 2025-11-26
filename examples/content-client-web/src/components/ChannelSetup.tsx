@@ -171,7 +171,7 @@ export function ChannelSetup({
             {setupStep > 0 && (
               <div className="setup-progress">
                 <div className="step-indicator">
-                  {[1, 2, 3, 4, 5, 6].map(step => (
+                  {[1, 2, 3, 4, 5].map(step => (
                     <div
                       key={step}
                       className={`step ${setupStep > step ? 'complete' : ''} ${setupStep === step ? 'active' : ''}`}

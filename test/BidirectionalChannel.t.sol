@@ -129,6 +129,26 @@ contract BidirectionalChannelTest is Test {
         assertEq(channel.deposits(bob), 7 ether);
     }
 
+    function test_FundAndOpenChannel() public {
+        // Alice funds and opens in a single transaction
+        vm.prank(alice);
+        vm.expectEmit(true, false, false, true);
+        emit ChannelFunded(5 ether);
+        vm.expectEmit(true, true, false, true);
+        emit ChannelOpened(alice, bob, 5 ether, 5 ether, 0);
+        channel.fundAndOpenChannel{value: 5 ether}();
+
+        assertEq(channel.deposits(alice), 5 ether);
+        assertEq(channel.channelBalance(), 5 ether);
+        assertEq(uint(channel.channelState()), 1); // OPEN state
+    }
+
+    function test_FundAndOpenChannelRequiresFunds() public {
+        vm.prank(alice);
+        vm.expectRevert("Must send funds");
+        channel.fundAndOpenChannel{value: 0}();
+    }
+
     function test_SubmitRevocation() public {
         // Setup: fund and open channel
         _fundAndOpenChannel();

@@ -145,35 +145,22 @@ export function useChannels(options: UseChannelsOptions = {}) {
       log(`Server revocation hash: ${serverRevocationHash.substring(0, 20)}...`, 'info');
 
       // Now we have both signatures - safe to fund!
-      // Step 3: Fund channel
-      onProgress(3, 'Funding channel with your deposit...');
-      log(`Funding channel with ${yourDeposit} ETH...`, 'info');
+      // Step 3: Fund and open channel in a single transaction
+      onProgress(3, 'Funding and opening channel...');
+      log(`Funding channel with ${yourDeposit} ETH and opening...`, 'info');
 
-      const fundHash = await writeContractAsync({
+      const fundAndOpenHash = await writeContractAsync({
         address: newChannelAddress,
         abi: contractAbi,
-        functionName: 'fundChannel',
+        functionName: 'fundAndOpenChannel',
         value: parseEther(yourDeposit),
       });
 
-      await publicClient.waitForTransactionReceipt({ hash: fundHash });
-      log('Your deposit complete', 'success');
+      await publicClient.waitForTransactionReceipt({ hash: fundAndOpenHash });
+      log('Channel funded and opened', 'success');
 
-      // Step 4: Open channel
-      onProgress(4, 'Opening channel...');
-      log('Opening channel...', 'info');
-
-      const openHash = await writeContractAsync({
-        address: newChannelAddress,
-        abi: contractAbi,
-        functionName: 'openChannel',
-      });
-
-      await publicClient.waitForTransactionReceipt({ hash: openHash });
-      log('Channel opened', 'success');
-
-      // Step 5: Register with server
-      onProgress(5, 'Registering channel with server...');
+      // Step 4: Register with server
+      onProgress(4, 'Registering channel with server...');
       log('Registering channel with server...', 'info');
 
       await api.registerChannel(serverUrl, newChannelAddress, address);
@@ -195,7 +182,7 @@ export function useChannels(options: UseChannelsOptions = {}) {
       setBobBalance('0');
       setCurrentNonce(0);
 
-      onProgress(6, 'Channel ready!');
+      onProgress(5, 'Channel ready!');
       log(`Channel setup complete: ${newChannelAddress}`, 'success');
       log('You have a signed initial commitment - your funds are protected!', 'success');
 
