@@ -71,6 +71,54 @@ export class PaymentManager {
   }
 
   /**
+   * Create initial commitment (nonce 0) for safe channel funding
+   * This commitment gives all funds back to the party creating it
+   */
+  async createInitialCommitment(channelAddress, depositAmount, partnerAddress) {
+    await this.init();
+    const signerAddress = await this.signer.getAddress();
+
+    // For initial commitment, all deposit goes to the creator (refund transaction)
+    const balanceA = depositAmount;
+    const balanceB = '0';
+    const nonce = 0;
+
+    // Create commitment hash
+    const commitmentData = ethers.solidityPacked(
+      ['address', 'uint256', 'uint256', 'uint256'],
+      [
+        channelAddress,
+        nonce,
+        ethers.parseEther(balanceA.toString()),
+        ethers.parseEther(balanceB.toString())
+      ]
+    );
+
+    const commitmentHash = ethers.keccak256(commitmentData);
+
+    // Sign the commitment
+    const signature = await this.signer.signMessage(ethers.getBytes(commitmentHash));
+
+    // Generate revocation hash for this commitment
+    const revocationPreimage = crypto.randomBytes(32);
+    const revocationHash = ethers.keccak256(revocationPreimage);
+
+    return {
+      channelAddress,
+      nonce: nonce.toString(),
+      balanceA: balanceA.toString(),
+      balanceB: balanceB.toString(),
+      hash: commitmentHash,
+      signature,
+      revocationPreimage: '0x' + revocationPreimage.toString('hex'),
+      revocationHash,
+      signerAddress,
+      partnerAddress,
+      timestamp: Date.now()
+    };
+  }
+
+  /**
    * Generate a revocation secret for an old commitment
    */
   async generateRevocationSecret(channelAddress, nonce) {

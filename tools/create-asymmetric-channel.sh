@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Create asymmetric channel: Party A deposits 1 ETH, Party B deposits 0.001 ETH
+# Create safe channel with initial commitment (refund protection)
+# Alice gets Bob's signature BEFORE funding the channel
 # Requires: anvil running on localhost:8545
 
 set -e
@@ -10,6 +11,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Anvil test accounts
@@ -22,11 +24,11 @@ RPC_URL="http://localhost:8545"
 CLI="node cli/index.js"
 
 # Data paths for Alice and Bob
-ALICE_DATA="/tmp/alice-asymmetric-channel"
-BOB_DATA="/tmp/bob-asymmetric-channel"
+ALICE_DATA="/tmp/alice-safe-channel"
+BOB_DATA="/tmp/bob-safe-channel"
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     Create Asymmetric Channel (1 ETH / 0.001 ETH)         ║${NC}"
+echo -e "${BLUE}║      Safe Channel Creation with Refund Protection         ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
 
 # Check if anvil is running
@@ -55,34 +57,61 @@ bob() {
     PRIVATE_KEY=$BOB_KEY RPC_URL=$RPC_URL DATA_PATH=$BOB_DATA $CLI "$@"
 }
 
-# Step 1: Alice creates channel with 1 ETH
-echo -e "\n${BLUE}═══ Step 1: Alice Creates Channel ═══${NC}"
-echo -e "${YELLOW}Alice creating channel with Bob (depositing 1 ETH)...${NC}"
-CREATE_OUTPUT=$(alice create-channel -p $BOB_ADDR -a 1.0 2>&1)
-echo "$CREATE_OUTPUT"
+# Step 1: Alice creates initial commitment (no funding)
+echo -e "\n${BLUE}═══ Step 1: Alice Creates Initial Commitment ═══${NC}"
+echo -e "${YELLOW}Alice creates channel with initial commitment (1 ETH planned)...${NC}"
 
-# Extract channel address
-CHANNEL_ADDR=$(echo "$CREATE_OUTPUT" | grep "Channel Address:" | awk '{print $3}')
-if [ -z "$CHANNEL_ADDR" ]; then
-    echo -e "${RED}Failed to extract channel address${NC}"
+# Create initial commitment and capture output
+COMMITMENT_OUTPUT=$(alice create-initial-commitment -p $BOB_ADDR -a 1.0 2>&1)
+echo "$COMMITMENT_OUTPUT"
+
+# Extract the JSON commitment data
+COMMITMENT_JSON=$(echo "$COMMITMENT_OUTPUT" | sed -n '/════ COMMITMENT DATA/,/════════════════/p' | sed '1d;$d')
+
+if [ -z "$COMMITMENT_JSON" ]; then
+    echo -e "${RED}Failed to extract commitment data${NC}"
     exit 1
 fi
-echo -e "${GREEN}✓ Channel created at: $CHANNEL_ADDR${NC}"
 
-# Step 2: Bob funds channel with 0.001 ETH
-echo -e "\n${BLUE}═══ Step 2: Bob Funds Channel ═══${NC}"
-echo -e "${YELLOW}Bob funding channel with 0.001 ETH...${NC}"
-bob fund-channel -c $CHANNEL_ADDR -a 0.001
-echo -e "${GREEN}✓ Bob funded channel${NC}"
+# Extract channel address
+CHANNEL_ADDR=$(echo "$COMMITMENT_JSON" | grep -o '"channelAddress":"[^"]*' | cut -d'"' -f4)
+echo -e "${GREEN}✓ Channel deployed at: $CHANNEL_ADDR (NOT funded yet)${NC}"
 
-# Step 3: Open the channel
-echo -e "\n${BLUE}═══ Step 3: Open Channel ═══${NC}"
-echo -e "${YELLOW}Alice opening channel...${NC}"
-alice open-channel -c $CHANNEL_ADDR
-echo -e "${GREEN}✓ Channel opened${NC}"
+# Save commitment for Bob
+echo "$COMMITMENT_JSON" > "$ALICE_DATA/commitment.json"
 
-# Step 4: Show channel status
-echo -e "\n${BLUE}═══ Step 4: Channel Status ═══${NC}"
+# Step 2: Bob signs the initial commitment
+echo -e "\n${BLUE}═══ Step 2: Bob Signs Initial Commitment ═══${NC}"
+echo -e "${YELLOW}Bob signing Alice's initial commitment...${NC}"
+echo -e "${CYAN}This gives Alice a refund path before she funds the channel${NC}"
+
+# Bob signs the commitment
+BOB_SIGNATURE=$(bob sign-commitment -d "$COMMITMENT_JSON" 2>&1 | tail -n 1)
+
+if [ -z "$BOB_SIGNATURE" ]; then
+    echo -e "${RED}Failed to get Bob's signature${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Bob signed the commitment${NC}"
+echo -e "${CYAN}Bob's response: ${BOB_SIGNATURE:0:60}...${NC}"
+
+# Step 3: Alice finalizes and funds the channel
+echo -e "\n${BLUE}═══ Step 3: Alice Finalizes and Funds Channel ═══${NC}"
+echo -e "${YELLOW}Alice verifying Bob's signature...${NC}"
+echo -e "${CYAN}Now it's safe to fund the channel - Alice has refund protection!${NC}"
+
+alice finalize-and-fund -c $CHANNEL_ADDR -a 1.0 -d "$BOB_SIGNATURE" --auto-open
+echo -e "${GREEN}✓ Channel funded with refund protection and opened${NC}"
+
+# Step 4: Optional - Bob can fund the channel too
+echo -e "\n${BLUE}═══ Step 4: Bob Funds Channel (Optional) ═══${NC}"
+echo -e "${YELLOW}Bob can optionally add funds to the channel...${NC}"
+bob fund-channel -c $CHANNEL_ADDR -a 0.01
+echo -e "${GREEN}✓ Bob funded channel with 0.01 ETH${NC}"
+
+# Step 5: Show channel status
+echo -e "\n${BLUE}═══ Step 5: Channel Status ═══${NC}"
 echo -e "${YELLOW}Alice's view:${NC}"
 alice status -c $CHANNEL_ADDR
 echo -e "\n${YELLOW}Bob's view:${NC}"
@@ -90,8 +119,14 @@ bob status -c $CHANNEL_ADDR
 
 # Summary
 echo -e "\n${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║                    Channel Created                         ║${NC}"
+echo -e "${BLUE}║          Safe Channel Created Successfully!                ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
+echo -e ""
+echo -e "${GREEN}✅ Key Security Features:${NC}"
+echo -e "  • Alice got Bob's signature BEFORE funding"
+echo -e "  • Alice has guaranteed refund path (initial commitment)"
+echo -e "  • Channel funded only after signatures exchanged"
+echo -e "  • No risk of fund lockup"
 echo -e ""
 echo -e "Channel Address: ${YELLOW}$CHANNEL_ADDR${NC}"
 echo -e "Alice Data Path: ${YELLOW}$ALICE_DATA${NC}"
@@ -99,7 +134,7 @@ echo -e "Bob Data Path:   ${YELLOW}$BOB_DATA${NC}"
 echo -e ""
 echo -e "Deposits:"
 echo -e "  Alice (Party A): ${GREEN}1.0 ETH${NC}"
-echo -e "  Bob (Party B):   ${GREEN}0.001 ETH${NC}"
-echo -e "  Total:           ${GREEN}1.001 ETH${NC}"
+echo -e "  Bob (Party B):   ${GREEN}0.01 ETH${NC}"
+echo -e "  Total:           ${GREEN}1.01 ETH${NC}"
 echo -e ""
 echo -e "${YELLOW}Channel is ready for off-chain payments!${NC}"

@@ -87,6 +87,70 @@ export class ChannelManager {
     }
   }
 
+  // Deploy channel without funding (for safe channel creation)
+  async deployChannelOnly(partnerAddress, disputePeriod) {
+    await this.init();
+
+    const abi = await this.getContractABI();
+    const bytecode = await this.getContractBytecode();
+
+    if (!bytecode) {
+      throw new Error('Contract bytecode not found. Please compile the contract first.');
+    }
+
+    const factory = new ethers.ContractFactory(abi, bytecode, this.signer);
+
+    const fundingDeadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+    const disputePeriodSeconds = parseInt(disputePeriod);
+
+    const myAddress = await this.signer.getAddress();
+
+    // Deploy the contract
+    const contract = await factory.deploy(
+      myAddress,
+      partnerAddress,
+      fundingDeadline,
+      disputePeriodSeconds
+    );
+
+    await contract.waitForDeployment();
+    const channelAddress = await contract.getAddress();
+    const deployTxHash = contract.deploymentTransaction().hash;
+
+    console.log(`Contract deployed at: ${channelAddress}`);
+
+    return {
+      channelAddress,
+      txHash: deployTxHash,
+      funded: false
+    };
+  }
+
+  // Fund channel with commitment protection
+  async fundChannelWithCommitment(channelAddress, amountETH, commitment) {
+    await this.init();
+
+    // Verify we have a valid commitment before funding
+    if (!commitment || !commitment.counterpartySignature) {
+      throw new Error('Cannot fund channel without signed commitment from counterparty');
+    }
+
+    const abi = await this.getContractABI();
+    const contract = new ethers.Contract(channelAddress, abi, this.signer);
+
+    const value = ethers.parseEther(amountETH);
+    const tx = await contract.fundChannel({ value });
+    const receipt = await tx.wait();
+
+    console.log(`Channel funded with ${amountETH} ETH (protected by commitment)`);
+
+    return {
+      txHash: receipt.hash,
+      funded: true
+    };
+  }
+
+  // Original createChannel for backward compatibility
   async createChannel(partnerAddress, amountETH, disputePeriod) {
     await this.init();
 

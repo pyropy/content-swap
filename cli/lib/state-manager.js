@@ -44,7 +44,7 @@ export class StateManager {
   /**
    * Save a new channel
    */
-  async saveChannel(channelAddress, partnerAddress) {
+  async saveChannel(channelAddress, partnerAddress, funded = false) {
     await this.init();
     const channels = await this.loadJSON(this.channelsFile);
 
@@ -52,7 +52,8 @@ export class StateManager {
       address: channelAddress,
       partner: partnerAddress,
       createdAt: Date.now(),
-      status: 'FUNDING'
+      status: funded ? 'FUNDING' : 'PRE_FUNDING',
+      funded: funded
     };
 
     // Check if channel already exists
@@ -71,9 +72,34 @@ export class StateManager {
       nonce: 0,
       balanceA: '0',
       balanceB: '0',
-      commitments: []
+      commitments: [],
+      funded: funded
     };
     await this.saveJSON(this.statesFile, states);
+  }
+
+  /**
+   * Mark channel as funded
+   */
+  async markChannelFunded(channelAddress) {
+    await this.init();
+
+    // Update channel status
+    const channels = await this.loadJSON(this.channelsFile);
+    const channelIndex = channels.findIndex(c => c.address === channelAddress);
+    if (channelIndex >= 0) {
+      channels[channelIndex].status = 'FUNDING';
+      channels[channelIndex].funded = true;
+      channels[channelIndex].fundedAt = Date.now();
+      await this.saveJSON(this.channelsFile, channels);
+    }
+
+    // Update state
+    const states = await this.loadJSON(this.statesFile);
+    if (states[channelAddress]) {
+      states[channelAddress].funded = true;
+      await this.saveJSON(this.statesFile, states);
+    }
   }
 
   /**

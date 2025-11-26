@@ -293,12 +293,21 @@ program
         return;
       }
 
-      console.log(chalk.blue('Received commitment from counterparty:'));
+      const isInitialCommitment = parseInt(incoming.nonce) === 0;
+
+      console.log(chalk.blue(isInitialCommitment ?
+        'Received INITIAL commitment from counterparty (pre-funding):' :
+        'Received commitment from counterparty:'));
       console.log(chalk.gray(`  Channel: ${incoming.channelAddress}`));
       console.log(chalk.gray(`  Nonce: ${incoming.nonce}`));
       console.log(chalk.gray(`  Balance A: ${incoming.balanceA} ETH`));
       console.log(chalk.gray(`  Balance B: ${incoming.balanceB} ETH`));
       console.log(chalk.gray(`  Hash: ${incoming.hash.substring(0, 30)}...`));
+
+      if (isInitialCommitment) {
+        console.log(chalk.yellow('\n⚠️  This is an initial commitment (nonce 0)'));
+        console.log(chalk.yellow('   The channel should NOT be funded yet'));
+      }
 
       // Verify the hash matches the commitment data
       const { ethers } = await import('ethers');
@@ -362,7 +371,13 @@ program
       }
 
       // Create response with signatures and revocation data
-      const signedCommitment = {
+      const signedCommitment = isInitialCommitment ? {
+        // For initial commitment, simplified response for funding flow
+        signature: mySignature,
+        revocationHash: myRevocationHash,
+        signerAddress: myAddress
+      } : {
+        // For regular commitments, full response
         channelAddress: incoming.channelAddress,
         nonce: incoming.nonce,
         balanceA: incoming.balanceA,
@@ -396,10 +411,18 @@ program
         console.log(chalk.green(`\nCommitment #${previousNonce} marked as revoked locally`));
       }
 
-      console.log(chalk.cyan('\nSigned commitment (send back to initiator):'));
+      console.log(chalk.cyan(isInitialCommitment ?
+        '\n✅ INITIAL COMMITMENT SIGNED (send back to initiator):' :
+        '\nSigned commitment (send back to initiator):'));
       console.log(chalk.gray('─'.repeat(60)));
       console.log(JSON.stringify(signedCommitment));
       console.log(chalk.gray('─'.repeat(60)));
+
+      if (isInitialCommitment) {
+        console.log(chalk.yellow('\n⚠️  IMPORTANT: This signature enables the channel creator to'));
+        console.log(chalk.yellow('   safely fund the channel with refund protection.'));
+        console.log(chalk.yellow('   You may also want to fund the channel after they do.'));
+      }
     } catch (error) {
       console.error(chalk.red('Error signing commitment:'), error.message);
     }
@@ -890,6 +913,167 @@ program
         default:
           console.log(chalk.yellow('Feature coming soon!'));
       }
+    }
+  });
+
+// Create safe channel with initial commitment
+program
+  .command('create-initial-commitment')
+  .description('Create channel with initial commitment (safe mode - get signature before funding)')
+  .option('-p, --partner <address>', 'Partner address')
+  .option('-a, --amount <amount>', 'Your planned deposit amount in ETH')
+  .option('-d, --dispute-period <seconds>', 'Dispute period in seconds', '86400')
+  .action(async (options) => {
+    try {
+      const { partner, amount, disputePeriod } = options;
+
+      if (!partner || !amount) {
+        console.log(chalk.red('Partner address and amount are required'));
+        return;
+      }
+
+      console.log(chalk.blue.bold('\n╔════════════════════════════════════════════════════════════╗'));
+      console.log(chalk.blue.bold('║           SAFE CHANNEL CREATION WITH REFUND PATH           ║'));
+      console.log(chalk.blue.bold('╚════════════════════════════════════════════════════════════╝\n'));
+
+      // Step 1: Deploy channel (without funding)
+      console.log(chalk.yellow('Step 1: Deploying channel contract (no funds)...'));
+      const deployResult = await channelManager.deployChannelOnly(partner, disputePeriod);
+      console.log(chalk.green(`✓ Channel deployed at: ${deployResult.channelAddress}`));
+      console.log(chalk.gray(`  Transaction: ${deployResult.txHash}`));
+
+      // Save unfunded channel to state
+      await stateManager.saveChannel(deployResult.channelAddress, partner, false);
+
+      // Step 2: Create initial commitment
+      console.log(chalk.yellow('\nStep 2: Creating initial commitment (nonce 0)...'));
+      const commitment = await paymentManager.createInitialCommitment(
+        deployResult.channelAddress,
+        amount,
+        partner
+      );
+
+      console.log(chalk.green('✓ Initial commitment created'));
+      console.log(chalk.gray(`  Your balance: ${commitment.balanceA} ETH (full refund)`));
+      console.log(chalk.gray(`  Partner balance: ${commitment.balanceB} ETH`));
+      console.log(chalk.gray(`  Commitment hash: ${commitment.hash.substring(0, 20)}...`));
+      console.log(chalk.gray(`  Your revocation hash: ${commitment.revocationHash.substring(0, 20)}...`));
+
+      // Save initial commitment
+      await stateManager.saveCommitment(deployResult.channelAddress, commitment.nonce, commitment);
+
+      // Step 3: Output serialized commitment for partner
+      console.log(chalk.yellow('\nStep 3: Share this commitment with your partner for signing:'));
+
+      const serialized = {
+        channelAddress: deployResult.channelAddress,
+        nonce: commitment.nonce,
+        balanceA: commitment.balanceA,
+        balanceB: commitment.balanceB,
+        hash: commitment.hash,
+        signature: commitment.signature,
+        revocationHash: commitment.revocationHash,
+        signerAddress: commitment.signerAddress
+      };
+
+      console.log(chalk.cyan('\n════ COMMITMENT DATA (send to partner) ════'));
+      console.log(JSON.stringify(serialized));
+      console.log(chalk.cyan('════════════════════════════════════════════\n'));
+
+      console.log(chalk.yellow('⚠️  IMPORTANT: Do NOT fund the channel until you receive'));
+      console.log(chalk.yellow('   your partner\'s signed response!'));
+      console.log(chalk.yellow('\nNext steps:'));
+      console.log(chalk.white('1. Send the above JSON to your partner'));
+      console.log(chalk.white('2. Partner signs with: channel-cli sign-commitment -d \'<json>\''));
+      console.log(chalk.white('3. Once you receive their response, finalize with:'));
+      console.log(chalk.white(`   channel-cli finalize-and-fund -c ${deployResult.channelAddress} -a ${amount} -d '<response>'`));
+    } catch (error) {
+      console.error(chalk.red('Error creating initial commitment:'), error.message);
+    }
+  });
+
+// Finalize and fund channel after receiving partner's signature
+program
+  .command('finalize-and-fund')
+  .description('Finalize initial commitment and fund channel (after receiving partner signature)')
+  .option('-c, --channel <address>', 'Channel contract address')
+  .option('-a, --amount <amount>', 'Deposit amount in ETH')
+  .option('-d, --data <json>', 'Partner\'s signed response')
+  .option('--auto-open', 'Automatically open channel after funding')
+  .action(async (options) => {
+    try {
+      const { channel, amount, data, autoOpen } = options;
+
+      if (!channel || !amount || !data) {
+        console.log(chalk.red('Channel address, amount, and partner response are required'));
+        return;
+      }
+
+      console.log(chalk.blue.bold('\n╔════════════════════════════════════════════════════════════╗'));
+      console.log(chalk.blue.bold('║              FINALIZING AND FUNDING CHANNEL                ║'));
+      console.log(chalk.blue.bold('╚════════════════════════════════════════════════════════════╝\n'));
+
+      // Parse partner's response
+      const partnerResponse = JSON.parse(data);
+
+      if (!partnerResponse.signature || !partnerResponse.revocationHash) {
+        console.log(chalk.red('Invalid partner response. Missing signature or revocation hash'));
+        return;
+      }
+
+      // Get our stored commitment
+      const ourCommitment = await stateManager.getCommitment(channel, 0);
+      if (!ourCommitment) {
+        console.log(chalk.red('No initial commitment found. Run create-initial-commitment first'));
+        return;
+      }
+
+      // Verify partner's signature
+      console.log(chalk.yellow('Step 1: Verifying partner\'s signature...'));
+      const channelInfo = await channelManager.getChannelInfo(channel);
+      const isValid = await paymentManager.verifyCommitment(
+        channel,
+        0,
+        ourCommitment.balanceA,
+        ourCommitment.balanceB,
+        partnerResponse.signature,
+        channelInfo.partyB
+      );
+
+      if (!isValid) {
+        console.log(chalk.red('❌ Invalid partner signature!'));
+        return;
+      }
+
+      console.log(chalk.green('✓ Partner signature verified'));
+
+      // Update commitment with partner's data
+      ourCommitment.counterpartySignature = partnerResponse.signature;
+      ourCommitment.counterpartyRevocationHash = partnerResponse.revocationHash;
+      await stateManager.saveCommitment(channel, 0, ourCommitment);
+      console.log(chalk.green('✓ Commitment finalized with both signatures'));
+
+      // Fund the channel
+      console.log(chalk.yellow(`\nStep 2: Funding channel with ${amount} ETH...`));
+      const fundResult = await channelManager.fundChannelWithCommitment(channel, amount, ourCommitment);
+      console.log(chalk.green(`✓ Channel funded! Transaction: ${fundResult.txHash}`));
+
+      // Mark channel as funded
+      await stateManager.markChannelFunded(channel);
+
+      // Optionally open the channel
+      if (autoOpen) {
+        console.log(chalk.yellow('\nStep 3: Opening channel...'));
+        const openResult = await channelManager.openChannel(channel);
+        console.log(chalk.green(`✓ Channel opened! Transaction: ${openResult.txHash}`));
+      }
+
+      console.log(chalk.green.bold('\n✅ SUCCESS! Channel is now funded with refund protection.'));
+      console.log(chalk.white(`\nChannel Address: ${channel}`));
+      console.log(chalk.white(`Your Deposit: ${amount} ETH`));
+      console.log(chalk.white(`Status: ${autoOpen ? 'OPEN (ready for payments)' : 'FUNDED (run open-channel to activate)'}`));
+    } catch (error) {
+      console.error(chalk.red('Error finalizing and funding:'), error.message);
     }
   });
 
