@@ -34,7 +34,7 @@ export class ChannelManager {
 
   async getContractABI() {
     try {
-      const abiPath = path.join(__dirname, '../../out/BidirectionalChannel.sol/BidirectionalChannel.json');
+      const abiPath = path.join(__dirname, '../../contract/out/BidirectionalChannel.sol/BidirectionalChannel.json');
       const contractJson = JSON.parse(await fs.readFile(abiPath, 'utf8'));
       return contractJson.abi;
     } catch (error) {
@@ -63,7 +63,7 @@ export class ChannelManager {
 
   async getContractBytecode() {
     try {
-      const contractPath = path.join(__dirname, '../../out/BidirectionalChannel.sol/BidirectionalChannel.json');
+      const contractPath = path.join(__dirname, '../../contract/out/BidirectionalChannel.sol/BidirectionalChannel.json');
       const contractJson = JSON.parse(await fs.readFile(contractPath, 'utf8'));
       return contractJson.bytecode.object;
     } catch (error) {

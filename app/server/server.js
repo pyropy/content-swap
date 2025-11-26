@@ -156,7 +156,7 @@ let contractBytecode = null;
 
 async function loadChannelContract() {
   try {
-    const contractPath = new URL('../out/BidirectionalChannel.sol/BidirectionalChannel.json', import.meta.url);
+    const contractPath = new URL('../../contract/out/BidirectionalChannel.sol/BidirectionalChannel.json', import.meta.url);
     const contractJson = JSON.parse(await fs.readFile(contractPath, 'utf8'));
     contractAbi = contractJson.abi;
     contractBytecode = contractJson.bytecode.object;

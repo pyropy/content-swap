@@ -126,7 +126,7 @@ async function setupChannel() {
     console.log(chalk.green(`✓ Using channel: ${channelAddress}\n`));
 
     // Load contract ABI
-    const contractPath = new URL('../out/BidirectionalChannel.sol/BidirectionalChannel.json', import.meta.url);
+    const contractPath = new URL('../../contract/out/BidirectionalChannel.sol/BidirectionalChannel.json', import.meta.url);
     const contractJson = JSON.parse(await fs.readFile(contractPath, 'utf8'));
 
     if (channelAddress && channelAddress !== '0x' + '1'.repeat(40)) {
