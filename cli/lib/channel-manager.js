@@ -103,20 +103,21 @@ export class ChannelManager {
 
     console.log(`Contract deployed at: ${channelAddress}`);
 
-    try {
-      // Fund the channel with initial deposit
-      console.log(`Funding channel with ${amountETH} ETH...`);
-      const fundTx = await contract.fundChannel({ value });
-      const fundReceipt = await fundTx.wait();
-      console.log(`Channel funded with ${amountETH} ETH`);
-    } catch (fundError) {
-      console.log(`Warning: Could not automatically fund channel. Please use 'fund-channel' command.`);
-      console.log(`Error: ${fundError.message}`);
-    }
+    // Fund the channel with initial deposit
+    // Create fresh provider and signer to avoid nonce caching issues after deployment
+    console.log(`Funding channel with ${amountETH} ETH...`);
+    const rpcUrl = process.env.RPC_URL || 'http://localhost:8545';
+    const freshProvider = new ethers.JsonRpcProvider(rpcUrl);
+    const freshSigner = new ethers.Wallet(process.env.PRIVATE_KEY, freshProvider);
+    const fundContract = new ethers.Contract(channelAddress, abi, freshSigner);
+    const fundTx = await fundContract.fundChannel({ value });
+    await fundTx.wait();
+    console.log(`Channel funded with ${amountETH} ETH`);
 
     return {
       channelAddress,
-      txHash: deployTxHash
+      txHash: deployTxHash,
+      funded: true
     };
   }
 

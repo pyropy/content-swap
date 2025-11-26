@@ -7,14 +7,17 @@ const __dirname = path.dirname(__filename);
 
 export class StateManager {
   constructor() {
-    this.dataDir = path.join(__dirname, '../data');
+    // Use DATA_PATH env variable or default to cli/data
+    this.dataDir = process.env.DATA_PATH || path.join(__dirname, '../data');
     this.channelsFile = path.join(this.dataDir, 'channels.json');
     this.statesFile = path.join(this.dataDir, 'states.json');
     this.commitmentsFile = path.join(this.dataDir, 'commitments.json');
-    this.init();
+    this.initialized = false;
   }
 
   async init() {
+    if (this.initialized) return;
+
     // Create data directory if it doesn't exist
     try {
       await fs.mkdir(this.dataDir, { recursive: true });
@@ -26,6 +29,8 @@ export class StateManager {
     await this.initializeFile(this.channelsFile, []);
     await this.initializeFile(this.statesFile, {});
     await this.initializeFile(this.commitmentsFile, {});
+
+    this.initialized = true;
   }
 
   async initializeFile(filePath, defaultContent) {
@@ -40,6 +45,7 @@ export class StateManager {
    * Save a new channel
    */
   async saveChannel(channelAddress, partnerAddress) {
+    await this.init();
     const channels = await this.loadJSON(this.channelsFile);
 
     const channel = {
@@ -74,6 +80,7 @@ export class StateManager {
    * Get all channels
    */
   async getAllChannels() {
+    await this.init();
     return await this.loadJSON(this.channelsFile);
   }
 
@@ -81,6 +88,7 @@ export class StateManager {
    * Get channel state
    */
   async getChannelState(channelAddress) {
+    await this.init();
     const states = await this.loadJSON(this.statesFile);
     return states[channelAddress] || null;
   }
@@ -89,6 +97,7 @@ export class StateManager {
    * Update channel state
    */
   async updateChannelState(channelAddress, newState) {
+    await this.init();
     const states = await this.loadJSON(this.statesFile);
     states[channelAddress] = {
       ...states[channelAddress],
@@ -98,16 +107,32 @@ export class StateManager {
   }
 
   /**
-   * Save a commitment
+   * Save a commitment (updates existing if same nonce, otherwise adds new)
    */
   async saveCommitment(channelAddress, commitment) {
+    await this.init();
     const commitments = await this.loadJSON(this.commitmentsFile);
 
     if (!commitments[channelAddress]) {
       commitments[channelAddress] = [];
     }
 
-    commitments[channelAddress].push(commitment);
+    // Check if commitment with same nonce exists
+    const existingIndex = commitments[channelAddress].findIndex(
+      c => c.nonce === commitment.nonce.toString()
+    );
+
+    if (existingIndex >= 0) {
+      // Update existing commitment
+      commitments[channelAddress][existingIndex] = {
+        ...commitments[channelAddress][existingIndex],
+        ...commitment
+      };
+    } else {
+      // Add new commitment
+      commitments[channelAddress].push(commitment);
+    }
+
     await this.saveJSON(this.commitmentsFile, commitments);
 
     // Update channel state with latest balances
@@ -122,6 +147,7 @@ export class StateManager {
    * Get a specific commitment
    */
   async getCommitment(channelAddress, nonce) {
+    await this.init();
     const commitments = await this.loadJSON(this.commitmentsFile);
     const channelCommitments = commitments[channelAddress] || [];
 
@@ -132,6 +158,7 @@ export class StateManager {
    * Get all commitments for a channel
    */
   async getCommitments(channelAddress) {
+    await this.init();
     const commitments = await this.loadJSON(this.commitmentsFile);
     return commitments[channelAddress] || [];
   }
@@ -140,6 +167,7 @@ export class StateManager {
    * Mark a commitment as revoked
    */
   async markCommitmentRevoked(channelAddress, nonce, revocationSecret) {
+    await this.init();
     const commitments = await this.loadJSON(this.commitmentsFile);
     const channelCommitments = commitments[channelAddress] || [];
 
@@ -158,6 +186,7 @@ export class StateManager {
    * Get revoked commitments for a channel
    */
   async getRevokedCommitments(channelAddress) {
+    await this.init();
     const commitments = await this.loadJSON(this.commitmentsFile);
     const channelCommitments = commitments[channelAddress] || [];
 
@@ -188,6 +217,7 @@ export class StateManager {
    * Clear all data (for testing)
    */
   async clearAll() {
+    await this.init();
     await this.saveJSON(this.channelsFile, []);
     await this.saveJSON(this.statesFile, {});
     await this.saveJSON(this.commitmentsFile, {});
