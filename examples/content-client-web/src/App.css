@@ -1,0 +1,99 @@
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+header {
+  text-align: center;
+  padding: 30px 0;
+  border-bottom: 1px solid #333;
+  margin-bottom: 30px;
+}
+
+header h1 {
+  color: #00d4ff;
+  font-size: 1.8rem;
+  margin-bottom: 10px;
+}
+
+header p {
+  color: #888;
+  font-size: 0.9rem;
+}
+
+.panel {
+  background: #1e1e3f;
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s;
+}
+
+.btn-primary {
+  background: #00d4ff;
+  color: #1a1a2e;
+}
+
+.btn-primary:hover {
+  background: #00b8e6;
+}
+
+.btn-success {
+  background: #00ff88;
+  color: #1a1a2e;
+}
+
+.btn-success:hover {
+  background: #00e077;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-disabled {
+  background: #666;
+  color: #999;
+}
+
+.btn-disabled:hover {
+  background: #666;
+}
+
+.btn-danger {
+  background: #ff4444;
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: #cc3333;
+}
+
+.btn-warning {
+  background: #ffaa00;
+  color: #1a1a2e;
+}
+
+.btn-warning:hover {
+  background: #dd9500;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}

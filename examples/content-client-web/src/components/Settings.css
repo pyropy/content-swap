@@ -1,0 +1,89 @@
+.config-form {
+  display: grid;
+  gap: 15px;
+}
+
+.config-form h3 {
+  color: #00d4ff;
+  margin-bottom: 10px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-group label {
+  color: #888;
+  font-size: 0.85rem;
+}
+
+.form-group input {
+  padding: 12px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: monospace;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #00d4ff;
+}
+
+.form-group input:read-only {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.wallet-connected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px;
+  background: #252550;
+  border-radius: 8px;
+}
+
+.connected-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.connected-badge {
+  background: #00ff88;
+  color: #1a1a2e;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.address {
+  font-family: monospace;
+  color: #00d4ff;
+}
+
+.wallet-connectors {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.btn-secondary {
+  background: #444;
+  color: #e0e0e0;
+}
+
+.btn-secondary:hover {
+  background: #555;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid #333;
+  margin: 20px 0;
+}

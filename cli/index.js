@@ -855,6 +855,7 @@ program
           choices: [
             'Create new channel',
             'Fund existing channel',
+            'Open channel',
             'Send off-chain payment',
             'Exchange revocation secret',
             'View channel status',

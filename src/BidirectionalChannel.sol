@@ -40,6 +40,7 @@ contract BidirectionalChannel is ReentrancyGuard {
 
     // Events
     event ChannelFunded(uint256 totalBalance);
+    event ChannelOpened(address indexed partyA, address indexed partyB, uint256 totalBalance, uint256 depositA, uint256 depositB);
     event CommitmentRevoked(bytes32 indexed commitmentHash);
     event DisputeInitiated(address indexed initiator, uint256 nonce, uint256 deadline);
     event ChannelSettled(uint256 balanceA, uint256 balanceB);
@@ -87,36 +88,12 @@ contract BidirectionalChannel is ReentrancyGuard {
     }
 
     /**
-     * @dev Open the channel once both parties have funded
+     * @dev Open the channel once it has been funded
      */
     function openChannel() external onlyParticipants inState(State.FUNDING) {
-        require(deposits[partyA] > 0 && deposits[partyB] > 0, "Both parties must fund");
+        require(channelBalance > 0, "Channel must have funds");
         channelState = State.OPEN;
-    }
-
-    /**
-     * @dev Refund deposits if channel opening fails
-     */
-    function refundDeposits() external nonReentrant inState(State.FUNDING) {
-        require(block.timestamp > fundingDeadline, "Funding period not over");
-
-        uint256 refundA = deposits[partyA];
-        uint256 refundB = deposits[partyB];
-
-        deposits[partyA] = 0;
-        deposits[partyB] = 0;
-        channelBalance = 0;
-        channelState = State.CLOSED;
-
-        if (refundA > 0) {
-            (bool successA, ) = partyA.call{value: refundA}("");
-            require(successA, "Refund to A failed");
-        }
-
-        if (refundB > 0) {
-            (bool successB, ) = partyB.call{value: refundB}("");
-            require(successB, "Refund to B failed");
-        }
+        emit ChannelOpened(partyA, partyB, channelBalance, deposits[partyA], deposits[partyB]);
     }
 
     /**

@@ -94,8 +94,8 @@ const aliceRevocationManager = new RevocationKeyManager(
 let channelAddress = null;
 let channelContract = null;
 let currentNonce = 0;
-let aliceBalance = 5.0;
-let bobBalance = 0.01;
+let aliceBalance = '5'; // Store as ETH string
+let bobBalance = '0.01'; // Store as ETH string
 const purchasedContent = [];
 
 // Setup readline for user input
@@ -182,8 +182,8 @@ async function purchaseContent(contentId) {
       channelAddress,
       currentNonce,
       aliceAddress: alice.address,
-      currentAliceBalance: aliceBalance.toString(),
-      currentBobBalance: bobBalance.toString()
+      currentAliceBalance: aliceBalance,
+      currentBobBalance: bobBalance
     });
 
     const { invoice } = requestResponse.data;
@@ -274,9 +274,9 @@ async function purchaseContent(contentId) {
       console.log(chalk.white(decryptedContent));
       console.log(chalk.gray('─'.repeat(60)));
 
-      // Update local state with the commitment balances
-      aliceBalance = parseFloat(commitment.aliceBalance);
-      bobBalance = parseFloat(commitment.bobBalance);
+      // Update local state with the commitment balances (use formatEther for consistent format)
+      aliceBalance = ethers.formatEther(ethers.parseEther(commitment.aliceBalance));
+      bobBalance = ethers.formatEther(ethers.parseEther(commitment.bobBalance));
       currentNonce = invoice.nonce;
 
       // Store purchased content
@@ -292,8 +292,8 @@ async function purchaseContent(contentId) {
       console.log(chalk.green(`\n✓ Content successfully purchased and decrypted!`));
       console.log(chalk.cyan(`Updated channel state:`));
       console.log(chalk.gray(`  Nonce: ${currentNonce}`));
-      console.log(chalk.gray(`  Alice balance: ${aliceBalance} ETH`));
-      console.log(chalk.gray(`  Bob balance: ${bobBalance} ETH`));
+      console.log(chalk.gray(`  Alice balance: ${parseFloat(aliceBalance).toFixed(4)} ETH`));
+      console.log(chalk.gray(`  Bob balance: ${parseFloat(bobBalance).toFixed(4)} ETH`));
 
       // Step 6: Reveal Alice's old revocation secret (if applicable)
       if (currentNonce > 1) {
@@ -375,8 +375,8 @@ async function mainMenu() {
       console.log(chalk.cyan('\n📊 Channel State:\n'));
       console.log(chalk.gray(`  Channel: ${channelAddress}`));
       console.log(chalk.gray(`  Current nonce: ${currentNonce}`));
-      console.log(chalk.gray(`  Alice balance: ${aliceBalance} ETH`));
-      console.log(chalk.gray(`  Bob balance: ${bobBalance} ETH`));
+      console.log(chalk.gray(`  Alice balance: ${parseFloat(aliceBalance).toFixed(4)} ETH`));
+      console.log(chalk.gray(`  Bob balance: ${parseFloat(bobBalance).toFixed(4)} ETH`));
       console.log(chalk.gray(`  Total purchased: ${purchasedContent.length} items\n`));
       break;
 

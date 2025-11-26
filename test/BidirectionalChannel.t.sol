@@ -16,6 +16,7 @@ contract BidirectionalChannelTest is Test {
     uint256 public disputePeriod;
 
     event ChannelFunded(uint256 totalBalance);
+    event ChannelOpened(address indexed partyA, address indexed partyB, uint256 totalBalance, uint256 depositA, uint256 depositB);
     event CommitmentRevoked(bytes32 indexed commitmentHash);
     event DisputeInitiated(address indexed initiator, uint256 nonce, uint256 deadline);
     event ChannelSettled(uint256 balanceA, uint256 balanceB);
@@ -87,31 +88,45 @@ contract BidirectionalChannelTest is Test {
         assertEq(uint(channel.channelState()), 1); // OPEN state
     }
 
-    function test_CannotOpenWithoutBothFunding() public {
+    function test_SinglePartyFunding() public {
         // Only Alice funds
         vm.prank(alice);
         channel.fundChannel{value: 5 ether}();
 
-        // Try to open - should fail
+        // Alice can open channel with single-party funding
         vm.prank(alice);
-        vm.expectRevert("Both parties must fund");
+        vm.expectEmit(true, true, false, true);
+        emit ChannelOpened(alice, bob, 5 ether, 5 ether, 0);
+        channel.openChannel();
+
+        assertEq(uint(channel.channelState()), 1); // OPEN state
+        assertEq(channel.deposits(alice), 5 ether);
+        assertEq(channel.deposits(bob), 0);
+    }
+
+    function test_CannotOpenWithoutAnyFunding() public {
+        // No one funds - should fail
+        vm.prank(alice);
+        vm.expectRevert("Channel must have funds");
         channel.openChannel();
     }
 
-    function test_RefundAfterDeadline() public {
-        // Alice funds
+    function test_DualPartyFundingStillWorks() public {
+        // Both parties fund (backward compatibility)
         vm.prank(alice);
-        channel.fundChannel{value: 5 ether}();
+        channel.fundChannel{value: 3 ether}();
 
-        // Advance time past deadline
-        vm.warp(fundingDeadline + 1);
+        vm.prank(bob);
+        channel.fundChannel{value: 7 ether}();
 
-        // Request refund
-        uint256 aliceBalanceBefore = alice.balance;
-        channel.refundDeposits();
+        vm.prank(alice);
+        vm.expectEmit(true, true, false, true);
+        emit ChannelOpened(alice, bob, 10 ether, 3 ether, 7 ether);
+        channel.openChannel();
 
-        assertEq(alice.balance, aliceBalanceBefore + 5 ether);
-        assertEq(uint(channel.channelState()), 3); // CLOSED state
+        assertEq(uint(channel.channelState()), 1); // OPEN state
+        assertEq(channel.deposits(alice), 3 ether);
+        assertEq(channel.deposits(bob), 7 ether);
     }
 
     function test_SubmitRevocation() public {

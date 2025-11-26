@@ -6,10 +6,8 @@
   "scripts": {
     "start": "node cli/index.js",
     "cli": "node cli/index.js",
-    "example:encrypted": "node examples/encrypted-content-example.js",
     "example:server": "node examples/content-server.js",
     "example:client": "node examples/content-client.js",
-    "example:test": "node examples/test-content-delivery.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": {

@@ -1,0 +1,30 @@
+.purchased-list {
+  display: grid;
+  gap: 15px;
+}
+
+.purchased-item {
+  background: #252550;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.purchased-item h3 {
+  color: #00ff88;
+  margin-bottom: 10px;
+}
+
+.purchased-item p {
+  color: #888;
+  font-size: 0.85rem;
+  margin-bottom: 10px;
+}
+
+.purchased-item .content-text {
+  background: #1a1a2e;
+  padding: 15px;
+  border-radius: 6px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  color: #e0e0e0;
+}

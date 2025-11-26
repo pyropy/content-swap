@@ -51,6 +51,7 @@ export class ChannelManager {
         "function finalizeDispute()",
         "function cooperativeClose(uint256 balanceA, uint256 balanceB, bytes signatureA, bytes signatureB)",
         "function getChannelInfo() view returns (address, address, uint256, uint8, uint256)",
+        "function deposits(address) view returns (uint256)",
         "event ChannelFunded(uint256 totalBalance)",
         "event CommitmentRevoked(bytes32 indexed commitmentHash)",
         "event DisputeInitiated(address indexed initiator, uint256 nonce, uint256 deadline)",

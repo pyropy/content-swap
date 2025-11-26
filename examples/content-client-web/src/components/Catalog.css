@@ -1,0 +1,44 @@
+.catalog-grid {
+  display: grid;
+  gap: 15px;
+}
+
+.content-card {
+  background: #252550;
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: transform 0.2s;
+}
+
+.content-card:hover {
+  transform: translateX(5px);
+}
+
+.content-info h3 {
+  color: #fff;
+  margin-bottom: 5px;
+}
+
+.content-info p {
+  color: #888;
+  font-size: 0.85rem;
+}
+
+.content-price {
+  text-align: right;
+}
+
+.content-price .price {
+  color: #00ff88;
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.content-price .unit {
+  color: #888;
+  font-size: 0.8rem;
+  margin-bottom: 10px;
+}

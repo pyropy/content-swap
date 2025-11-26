@@ -1,0 +1,30 @@
+.log-panel {
+  background: #0d0d1a;
+  border-radius: 8px;
+  padding: 15px;
+  height: 300px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+.log-entry {
+  padding: 5px 0;
+  border-bottom: 1px solid #222;
+}
+
+.log-entry.info {
+  color: #00d4ff;
+}
+
+.log-entry.success {
+  color: #00ff88;
+}
+
+.log-entry.error {
+  color: #ff4444;
+}
+
+.log-entry.warning {
+  color: #ffaa00;
+}

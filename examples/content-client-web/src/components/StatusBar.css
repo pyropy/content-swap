@@ -1,0 +1,27 @@
+.status-bar {
+  background: #1e1e3f;
+  border-radius: 10px;
+  padding: 15px 20px;
+  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+}
+
+.status-item {
+  text-align: center;
+}
+
+.status-item label {
+  display: block;
+  color: #888;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+
+.status-item span {
+  color: #00d4ff;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
