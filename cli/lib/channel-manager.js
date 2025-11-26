@@ -34,7 +34,14 @@ export class ChannelManager {
 
   async getContractABI() {
     try {
-      const abiPath = path.join(__dirname, '../../contract/out/BidirectionalChannel.sol/BidirectionalChannel.json');
+      // First try to load from centralized ABI location (created by make update-abis)
+      let abiPath = path.join(__dirname, '../abis/BidirectionalChannel.json');
+
+      // Fallback to contract build output if centralized ABI doesn't exist
+      if (!await fs.access(abiPath).then(() => true).catch(() => false)) {
+        abiPath = path.join(__dirname, '../../contract/out/BidirectionalChannel.sol/BidirectionalChannel.json');
+      }
+
       const contractJson = JSON.parse(await fs.readFile(abiPath, 'utf8'));
       return contractJson.abi;
     } catch (error) {
@@ -63,9 +70,17 @@ export class ChannelManager {
 
   async getContractBytecode() {
     try {
-      const contractPath = path.join(__dirname, '../../contract/out/BidirectionalChannel.sol/BidirectionalChannel.json');
+      // First try to load from centralized ABI location (created by make update-abis)
+      let contractPath = path.join(__dirname, '../abis/BidirectionalChannel.json');
+
+      // Fallback to contract build output if centralized ABI doesn't exist
+      if (!await fs.access(contractPath).then(() => true).catch(() => false)) {
+        contractPath = path.join(__dirname, '../../contract/out/BidirectionalChannel.sol/BidirectionalChannel.json');
+      }
+
       const contractJson = JSON.parse(await fs.readFile(contractPath, 'utf8'));
-      return contractJson.bytecode.object;
+      // Handle both formats: direct bytecode or nested under .bytecode.object
+      return contractJson.bytecode?.object || contractJson.bytecode;
     } catch (error) {
       console.error('Warning: Could not load bytecode from compiled contract');
       return null;

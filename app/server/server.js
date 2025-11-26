@@ -156,10 +156,20 @@ let contractBytecode = null;
 
 async function loadChannelContract() {
   try {
-    const contractPath = new URL('../../contract/out/BidirectionalChannel.sol/BidirectionalChannel.json', import.meta.url);
+    // First try to load from centralized ABI location (created by make update-abis)
+    let contractPath = new URL('../shared/BidirectionalChannel.json', import.meta.url);
+
+    // Check if centralized ABI exists, otherwise fallback to contract build output
+    try {
+      await fs.access(contractPath);
+    } catch {
+      contractPath = new URL('../../contract/out/BidirectionalChannel.sol/BidirectionalChannel.json', import.meta.url);
+    }
+
     const contractJson = JSON.parse(await fs.readFile(contractPath, 'utf8'));
     contractAbi = contractJson.abi;
-    contractBytecode = contractJson.bytecode.object;
+    // Handle both formats: direct bytecode or nested under .bytecode.object
+    contractBytecode = contractJson.bytecode?.object || contractJson.bytecode;
 
     // For demo, we'll use environment variable or config file for channel address
     channelAddress = process.env.CHANNEL_ADDRESS;

@@ -126,7 +126,16 @@ async function setupChannel() {
     console.log(chalk.green(`✓ Using channel: ${channelAddress}\n`));
 
     // Load contract ABI
-    const contractPath = new URL('../../contract/out/BidirectionalChannel.sol/BidirectionalChannel.json', import.meta.url);
+    // First try to load from centralized ABI location (created by make update-abis)
+    let contractPath = new URL('../shared/BidirectionalChannel.json', import.meta.url);
+
+    // Check if centralized ABI exists, otherwise fallback to contract build output
+    try {
+      await fs.access(contractPath);
+    } catch {
+      contractPath = new URL('../../contract/out/BidirectionalChannel.sol/BidirectionalChannel.json', import.meta.url);
+    }
+
     const contractJson = JSON.parse(await fs.readFile(contractPath, 'utf8'));
 
     if (channelAddress && channelAddress !== '0x' + '1'.repeat(40)) {
