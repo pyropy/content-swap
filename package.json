@@ -3,25 +3,19 @@
   "version": "1.0.0",
   "description": "Bidirectional payment channels with revocation secrets (Lightning Network style) on Ethereum",
   "type": "module",
+  "private": true,
+  "workspaces": [
+    "cli",
+    "app/web",
+    "app/server"
+  ],
   "scripts": {
-    "start": "node cli/index.js",
-    "cli": "node cli/index.js",
-    "example:server": "node examples/content-server.js",
-    "example:client": "node examples/content-client.js",
+    "cli": "npm run start -w cli",
+    "app:web": "npm run dev -w app/web",
+    "app:web:build": "npm run build -w app/web",
+    "app:server": "npm run start:server -w app/server",
+    "app:client": "npm run start:client -w app/server",
     "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "bin": {
-    "channel-cli": "./cli/index.js"
-  },
-  "dependencies": {
-    "axios": "^1.13.2",
-    "chalk": "^5.3.0",
-    "commander": "^11.1.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "ethers": "^6.9.0",
-    "express": "^5.1.0",
-    "inquirer": "^9.2.12"
   },
   "keywords": [
     "payment-channels",

@@ -1,0 +1,28 @@
+{
+  "name": "channel-cli",
+  "version": "1.0.0",
+  "description": "CLI tool for managing bidirectional payment channels",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "channel-cli": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1",
+    "ethers": "^6.9.0",
+    "inquirer": "^9.2.12"
+  },
+  "keywords": [
+    "payment-channels",
+    "ethereum",
+    "lightning-network",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT"
+}
