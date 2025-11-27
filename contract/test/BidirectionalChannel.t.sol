@@ -7,10 +7,10 @@ import "../src/BidirectionalChannel.sol";
 contract BidirectionalChannelTest is Test {
     BidirectionalChannel public channel;
 
-    address public alice;
-    address public bob;
-    uint256 public alicePrivateKey;
-    uint256 public bobPrivateKey;
+    address public partyA;
+    address public partyB;
+    uint256 public partyAPrivateKey;
+    uint256 public partyBPrivateKey;
 
     uint256 public fundingDeadline;
     uint256 public disputePeriod;
@@ -24,127 +24,127 @@ contract BidirectionalChannelTest is Test {
 
     function setUp() public {
         // Setup test accounts
-        alicePrivateKey = 0xa11ce;
-        bobPrivateKey = 0xb0b;
-        alice = vm.addr(alicePrivateKey);
-        bob = vm.addr(bobPrivateKey);
+        partyAPrivateKey = 0xa11ce;
+        partyBPrivateKey = 0xb0b;
+        partyA = vm.addr(partyAPrivateKey);
+        partyB = vm.addr(partyBPrivateKey);
 
         // Fund test accounts
-        vm.deal(alice, 100 ether);
-        vm.deal(bob, 100 ether);
+        vm.deal(partyA, 100 ether);
+        vm.deal(partyB, 100 ether);
 
         // Deploy channel
         fundingDeadline = block.timestamp + 1 hours;
         disputePeriod = 1 days;
 
         channel = new BidirectionalChannel(
-            alice,
-            bob,
+            partyA,
+            partyB,
             fundingDeadline,
             disputePeriod
         );
     }
 
     function test_InitialState() public view {
-        assertEq(channel.partyA(), alice);
-        assertEq(channel.partyB(), bob);
+        assertEq(channel.partyA(), partyA);
+        assertEq(channel.partyB(), partyB);
         assertEq(channel.fundingDeadline(), fundingDeadline);
         assertEq(channel.disputePeriod(), disputePeriod);
         assertEq(uint(channel.channelState()), 0); // FUNDING state
     }
 
     function test_FundingChannel() public {
-        // Alice funds the channel
-        vm.prank(alice);
+        // PartyA funds the channel
+        vm.prank(partyA);
         vm.expectEmit(true, false, false, true);
         emit ChannelFunded(5 ether);
         channel.fundChannel{value: 5 ether}();
 
-        assertEq(channel.deposits(alice), 5 ether);
+        assertEq(channel.deposits(partyA), 5 ether);
         assertEq(channel.channelBalance(), 5 ether);
 
-        // Bob funds the channel
-        vm.prank(bob);
+        // PartyB funds the channel
+        vm.prank(partyB);
         vm.expectEmit(true, false, false, true);
         emit ChannelFunded(10 ether);
         channel.fundChannel{value: 5 ether}();
 
-        assertEq(channel.deposits(bob), 5 ether);
+        assertEq(channel.deposits(partyB), 5 ether);
         assertEq(channel.channelBalance(), 10 ether);
     }
 
     function test_OpenChannel() public {
         // Fund channel first
-        vm.prank(alice);
+        vm.prank(partyA);
         channel.fundChannel{value: 5 ether}();
 
-        vm.prank(bob);
+        vm.prank(partyB);
         channel.fundChannel{value: 5 ether}();
 
         // Open the channel
-        vm.prank(alice);
+        vm.prank(partyA);
         channel.openChannel();
 
         assertEq(uint(channel.channelState()), 1); // OPEN state
     }
 
     function test_SinglePartyFunding() public {
-        // Only Alice funds
-        vm.prank(alice);
+        // Only partyA funds
+        vm.prank(partyA);
         channel.fundChannel{value: 5 ether}();
 
-        // Alice can open channel with single-party funding
-        vm.prank(alice);
+        // PartyA can open channel with single-party funding
+        vm.prank(partyA);
         vm.expectEmit(true, true, false, true);
-        emit ChannelOpened(alice, bob, 5 ether, 5 ether, 0);
+        emit ChannelOpened(partyA, partyB, 5 ether, 5 ether, 0);
         channel.openChannel();
 
         assertEq(uint(channel.channelState()), 1); // OPEN state
-        assertEq(channel.deposits(alice), 5 ether);
-        assertEq(channel.deposits(bob), 0);
+        assertEq(channel.deposits(partyA), 5 ether);
+        assertEq(channel.deposits(partyB), 0);
     }
 
     function test_CannotOpenWithoutAnyFunding() public {
         // No one funds - should fail
-        vm.prank(alice);
+        vm.prank(partyA);
         vm.expectRevert("Channel must have funds");
         channel.openChannel();
     }
 
     function test_DualPartyFundingStillWorks() public {
         // Both parties fund (backward compatibility)
-        vm.prank(alice);
+        vm.prank(partyA);
         channel.fundChannel{value: 3 ether}();
 
-        vm.prank(bob);
+        vm.prank(partyB);
         channel.fundChannel{value: 7 ether}();
 
-        vm.prank(alice);
+        vm.prank(partyA);
         vm.expectEmit(true, true, false, true);
-        emit ChannelOpened(alice, bob, 10 ether, 3 ether, 7 ether);
+        emit ChannelOpened(partyA, partyB, 10 ether, 3 ether, 7 ether);
         channel.openChannel();
 
         assertEq(uint(channel.channelState()), 1); // OPEN state
-        assertEq(channel.deposits(alice), 3 ether);
-        assertEq(channel.deposits(bob), 7 ether);
+        assertEq(channel.deposits(partyA), 3 ether);
+        assertEq(channel.deposits(partyB), 7 ether);
     }
 
     function test_FundAndOpenChannel() public {
-        // Alice funds and opens in a single transaction
-        vm.prank(alice);
+        // PartyA funds and opens in a single transaction
+        vm.prank(partyA);
         vm.expectEmit(true, false, false, true);
         emit ChannelFunded(5 ether);
         vm.expectEmit(true, true, false, true);
-        emit ChannelOpened(alice, bob, 5 ether, 5 ether, 0);
+        emit ChannelOpened(partyA, partyB, 5 ether, 5 ether, 0);
         channel.fundAndOpenChannel{value: 5 ether}();
 
-        assertEq(channel.deposits(alice), 5 ether);
+        assertEq(channel.deposits(partyA), 5 ether);
         assertEq(channel.channelBalance(), 5 ether);
         assertEq(uint(channel.channelState()), 1); // OPEN state
     }
 
     function test_FundAndOpenChannelRequiresFunds() public {
-        vm.prank(alice);
+        vm.prank(partyA);
         vm.expectRevert("Must send funds");
         channel.fundAndOpenChannel{value: 0}();
     }
@@ -158,7 +158,7 @@ contract BidirectionalChannelTest is Test {
         bytes32 commitmentHash = keccak256(abi.encodePacked(revocationSecret));
 
         // Submit revocation
-        vm.prank(alice);
+        vm.prank(partyA);
         vm.expectEmit(true, false, false, false);
         emit CommitmentRevoked(commitmentHash);
         channel.submitRevocation(commitmentHash, revocationSecret);
@@ -182,13 +182,13 @@ contract BidirectionalChannelTest is Test {
         );
 
         // Initiate dispute
-        vm.prank(alice);
+        vm.prank(partyA);
         vm.expectEmit(true, false, false, true);
-        emit DisputeInitiated(alice, nonce, block.timestamp + disputePeriod);
+        emit DisputeInitiated(partyA, nonce, block.timestamp + disputePeriod);
         channel.initiateDispute(nonce, balanceA, balanceB, sigA, sigB);
 
         assertEq(uint(channel.channelState()), 2); // DISPUTED state
-        assertEq(channel.disputeInitiator(), alice);
+        assertEq(channel.disputeInitiator(), partyA);
         assertEq(channel.disputedBalanceA(), balanceA);
         assertEq(channel.disputedBalanceB(), balanceB);
     }
@@ -204,7 +204,7 @@ contract BidirectionalChannelTest is Test {
             6 ether
         );
 
-        vm.prank(alice);
+        vm.prank(partyA);
         channel.initiateDispute(nonce1, 4 ether, 6 ether, sigA1, sigB1);
 
         // Challenge with newer commitment (nonce 2)
@@ -215,7 +215,7 @@ contract BidirectionalChannelTest is Test {
             7 ether
         );
 
-        vm.prank(bob);
+        vm.prank(partyB);
         channel.challengeDispute(nonce2, 3 ether, 7 ether, sigA2, sigB2);
 
         assertEq(channel.disputedNonce(), nonce2);
@@ -237,22 +237,22 @@ contract BidirectionalChannelTest is Test {
             balanceB
         );
 
-        vm.prank(alice);
+        vm.prank(partyA);
         channel.initiateDispute(nonce, balanceA, balanceB, sigA, sigB);
 
         // Advance time past dispute period
         vm.warp(block.timestamp + disputePeriod + 1);
 
         // Finalize dispute
-        uint256 aliceBalanceBefore = alice.balance;
-        uint256 bobBalanceBefore = bob.balance;
+        uint256 partyABalanceBefore = partyA.balance;
+        uint256 partyBBalanceBefore = partyB.balance;
 
         vm.expectEmit(true, false, false, true);
         emit ChannelSettled(balanceA, balanceB);
         channel.finalizeDispute();
 
-        assertEq(alice.balance, aliceBalanceBefore + balanceA);
-        assertEq(bob.balance, bobBalanceBefore + balanceB);
+        assertEq(partyA.balance, partyABalanceBefore + balanceA);
+        assertEq(partyB.balance, partyBBalanceBefore + balanceB);
         assertEq(uint(channel.channelState()), 3); // CLOSED state
     }
 
@@ -268,23 +268,23 @@ contract BidirectionalChannelTest is Test {
             abi.encodePacked("CLOSE", address(channel), balanceA, balanceB)
         );
 
-        (uint8 vA, bytes32 rA, bytes32 sA) = vm.sign(alicePrivateKey, _toEthSignedMessageHash(closeHash));
-        (uint8 vB, bytes32 rB, bytes32 sB) = vm.sign(bobPrivateKey, _toEthSignedMessageHash(closeHash));
+        (uint8 vA, bytes32 rA, bytes32 sA) = vm.sign(partyAPrivateKey, _toEthSignedMessageHash(closeHash));
+        (uint8 vB, bytes32 rB, bytes32 sB) = vm.sign(partyBPrivateKey, _toEthSignedMessageHash(closeHash));
 
         bytes memory sigA = abi.encodePacked(rA, sA, vA);
         bytes memory sigB = abi.encodePacked(rB, sB, vB);
 
         // Cooperative close
-        uint256 aliceBalanceBefore = alice.balance;
-        uint256 bobBalanceBefore = bob.balance;
+        uint256 partyABalanceBefore = partyA.balance;
+        uint256 partyBBalanceBefore = partyB.balance;
 
-        vm.prank(alice);
+        vm.prank(partyA);
         vm.expectEmit(true, false, false, true);
         emit ChannelSettled(balanceA, balanceB);
         channel.cooperativeClose(balanceA, balanceB, sigA, sigB);
 
-        assertEq(alice.balance, aliceBalanceBefore + balanceA);
-        assertEq(bob.balance, bobBalanceBefore + balanceB);
+        assertEq(partyA.balance, partyABalanceBefore + balanceA);
+        assertEq(partyB.balance, partyBBalanceBefore + balanceB);
         assertEq(uint(channel.channelState()), 3); // CLOSED state
     }
 
@@ -308,7 +308,7 @@ contract BidirectionalChannelTest is Test {
         bytes32 revocationHash = keccak256(abi.encodePacked(commitmentHash));
 
         // Mark as revoked
-        vm.prank(alice);
+        vm.prank(partyA);
         channel.submitRevocation(revocationHash, revocationSecret);
 
         // Now try to use this revoked commitment in a dispute
@@ -318,29 +318,29 @@ contract BidirectionalChannelTest is Test {
             balanceB
         );
 
-        // Alice tries to cheat by using revoked commitment
-        uint256 bobBalanceBefore = bob.balance;
+        // PartyA tries to cheat by using revoked commitment
+        uint256 partyBBalanceBefore = partyB.balance;
 
-        vm.prank(alice);
+        vm.prank(partyA);
         vm.expectEmit(true, false, false, true);
-        emit PenaltyApplied(alice, 10 ether);
+        emit PenaltyApplied(partyA, 10 ether);
         channel.initiateDispute(nonce, balanceA, balanceB, sigA, sigB);
 
-        // Bob should get all funds as penalty
-        assertEq(bob.balance, bobBalanceBefore + 10 ether);
+        // PartyB should get all funds as penalty
+        assertEq(partyB.balance, partyBBalanceBefore + 10 ether);
         assertEq(uint(channel.channelState()), 3); // CLOSED state
     }
 
     // Helper functions
 
     function _fundAndOpenChannel() private {
-        vm.prank(alice);
+        vm.prank(partyA);
         channel.fundChannel{value: 5 ether}();
 
-        vm.prank(bob);
+        vm.prank(partyB);
         channel.fundChannel{value: 5 ether}();
 
-        vm.prank(alice);
+        vm.prank(partyA);
         channel.openChannel();
     }
 
@@ -355,8 +355,8 @@ contract BidirectionalChannelTest is Test {
 
         bytes32 messageHash = _toEthSignedMessageHash(commitmentHash);
 
-        (uint8 vA, bytes32 rA, bytes32 sA) = vm.sign(alicePrivateKey, messageHash);
-        (uint8 vB, bytes32 rB, bytes32 sB) = vm.sign(bobPrivateKey, messageHash);
+        (uint8 vA, bytes32 rA, bytes32 sA) = vm.sign(partyAPrivateKey, messageHash);
+        (uint8 vB, bytes32 rB, bytes32 sB) = vm.sign(partyBPrivateKey, messageHash);
 
         sigA = abi.encodePacked(rA, sA, vA);
         sigB = abi.encodePacked(rB, sB, vB);

@@ -70,10 +70,10 @@ payment-channels/
 
 ### 1. Channel Creation and Funding
 ```bash
-# Alice creates channel with Bob
-channel-cli create-channel -p 0xBob... -a 5.0
+# PartyA creates channel with PartyB
+channel-cli create-channel -p 0xPartyB... -a 5.0
 
-# Bob funds the same channel
+# PartyB funds the same channel
 channel-cli fund-channel -c 0xChannel... -a 5.0
 
 # Open the channel for payments

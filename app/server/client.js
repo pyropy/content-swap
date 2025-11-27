@@ -16,18 +16,18 @@ import readline from 'readline';
 
 const SERVER_URL = 'http://localhost:3000';
 
-// Client's wallet (Alice - content buyer)
-const alicePrivateKey = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+// Client's wallet (PartyA - content buyer)
+const partyAPrivateKey = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
 const provider = new ethers.JsonRpcProvider('http://localhost:8545');
-const alice = new ethers.Wallet(alicePrivateKey, provider);
+const partyA = new ethers.Wallet(partyAPrivateKey, provider);
 
 console.log(chalk.blue.bold('\n════════════════════════════════════════════════════════════════'));
 console.log(chalk.blue.bold('     LIGHTNING NETWORK CONTENT DELIVERY CLIENT'));
 console.log(chalk.blue.bold('════════════════════════════════════════════════════════════════\n'));
 
 console.log(chalk.yellow('Client Configuration:'));
-console.log(chalk.white(`  Operator: Alice (Content Buyer)`));
-console.log(chalk.gray(`  Address: ${alice.address}`));
+console.log(chalk.white(`  Operator: PartyA (Content Buyer)`));
+console.log(chalk.gray(`  Address: ${partyA.address}`));
 console.log(chalk.gray(`  Server: ${SERVER_URL}\n`));
 
 // Content Decryption
@@ -53,7 +53,7 @@ class ContentDecryption {
   }
 }
 
-// Revocation Key Manager for Alice
+// Revocation Key Manager for PartyA
 class RevocationKeyManager {
   constructor(seed) {
     this.seed = seed;
@@ -85,17 +85,17 @@ class RevocationKeyManager {
   }
 }
 
-// Initialize Alice's revocation key manager
-const aliceRevocationManager = new RevocationKeyManager(
-  ethers.keccak256(ethers.toUtf8Bytes("alice-client-seed"))
+// Initialize PartyA's revocation key manager
+const partyARevocationManager = new RevocationKeyManager(
+  ethers.keccak256(ethers.toUtf8Bytes("partyA-client-seed"))
 );
 
 // Channel state management
 let channelAddress = null;
 let channelContract = null;
 let currentNonce = 0;
-let aliceBalance = '5'; // Store as ETH string
-let bobBalance = '0.01'; // Store as ETH string
+let partyABalance = '5'; // Store as ETH string
+let partyBBalance = '0.01'; // Store as ETH string
 const purchasedContent = [];
 
 // Setup readline for user input
@@ -139,7 +139,7 @@ async function setupChannel() {
     const contractJson = JSON.parse(await fs.readFile(contractPath, 'utf8'));
 
     if (channelAddress && channelAddress !== '0x' + '1'.repeat(40)) {
-      channelContract = new ethers.Contract(channelAddress, contractJson.abi, alice);
+      channelContract = new ethers.Contract(channelAddress, contractJson.abi, partyA);
     }
 
     return true;
@@ -190,9 +190,9 @@ async function purchaseContent(contentId) {
       contentId,
       channelAddress,
       currentNonce,
-      aliceAddress: alice.address,
-      currentAliceBalance: aliceBalance,
-      currentBobBalance: bobBalance
+      partyAAddress: partyA.address,
+      currentPartyABalance: partyABalance,
+      currentPartyBBalance: partyBBalance
     });
 
     const { invoice } = requestResponse.data;
@@ -202,12 +202,12 @@ async function purchaseContent(contentId) {
     console.log(chalk.gray(`  Title: ${invoice.title}`));
     console.log(chalk.gray(`  Price: ${invoice.price} ETH`));
     console.log(chalk.gray(`  Nonce: ${invoice.nonce}`));
-    console.log(chalk.gray(`  Bob's revocation hash: ${invoice.bobRevocationHash.substring(0, 20)}...`));
+    console.log(chalk.gray(`  PartyB's revocation hash: ${invoice.partyBRevocationHash.substring(0, 20)}...`));
     console.log(chalk.gray(`  Encrypted content size: ${invoice.encryptedContent.length} bytes`));
     console.log(chalk.gray(`  Preview: "${invoice.contentPreview}"`));
     console.log(chalk.cyan('\n📝 Server-created commitment:'));
-    console.log(chalk.gray(`  New Alice balance: ${invoice.commitment.aliceBalance} ETH`));
-    console.log(chalk.gray(`  New Bob balance: ${invoice.commitment.bobBalance} ETH`));
+    console.log(chalk.gray(`  New PartyA balance: ${invoice.commitment.partyABalance} ETH`));
+    console.log(chalk.gray(`  New PartyB balance: ${invoice.commitment.partyBBalance} ETH`));
 
     // Step 2: Try to decrypt without payment (will fail)
     console.log(chalk.yellow('\n🔒 STEP 2: Attempting decryption without payment...\n'));
@@ -228,13 +228,13 @@ async function purchaseContent(contentId) {
     console.log(chalk.cyan('Verifying commitment from server:'));
     console.log(chalk.gray(`  Channel: ${commitment.channelAddress}`));
     console.log(chalk.gray(`  Nonce: ${commitment.nonce}`));
-    console.log(chalk.gray(`  New Alice balance: ${commitment.aliceBalance} ETH`));
-    console.log(chalk.gray(`  New Bob balance: ${commitment.bobBalance} ETH`));
-    console.log(chalk.gray(`  Bob's revocation hash: ${commitment.bobRevocationHash.substring(0, 20)}...`));
+    console.log(chalk.gray(`  New PartyA balance: ${commitment.partyABalance} ETH`));
+    console.log(chalk.gray(`  New PartyB balance: ${commitment.partyBBalance} ETH`));
+    console.log(chalk.gray(`  PartyB's revocation hash: ${commitment.partyBRevocationHash.substring(0, 20)}...`));
 
-    // Generate Alice's revocation hash for this nonce
-    const aliceRevocationHash = aliceRevocationManager.generateRevocationHash(invoice.nonce);
-    console.log(chalk.gray(`\n  Alice's revocation hash: ${aliceRevocationHash.substring(0, 20)}...`));
+    // Generate PartyA's revocation hash for this nonce
+    const partyARevocationHash = partyARevocationManager.generateRevocationHash(invoice.nonce);
+    console.log(chalk.gray(`\n  PartyA's revocation hash: ${partyARevocationHash.substring(0, 20)}...`));
 
     // Sign the server-provided commitment
     const commitmentData = ethers.solidityPacked(
@@ -242,18 +242,18 @@ async function purchaseContent(contentId) {
       [
         commitment.channelAddress,
         commitment.nonce,
-        ethers.parseEther(commitment.aliceBalance),
-        ethers.parseEther(commitment.bobBalance),
-        aliceRevocationHash,
-        commitment.bobRevocationHash
+        ethers.parseEther(commitment.partyABalance),
+        ethers.parseEther(commitment.partyBBalance),
+        partyARevocationHash,
+        commitment.partyBRevocationHash
       ]
     );
 
     const commitmentHash = ethers.keccak256(commitmentData);
     console.log(chalk.gray(`  Commitment hash: ${commitmentHash.substring(0, 20)}...`));
 
-    const aliceSignature = await alice.signMessage(ethers.getBytes(commitmentHash));
-    console.log(chalk.gray(`  Alice's signature: ${aliceSignature.substring(0, 20)}...`));
+    const partyASignature = await partyA.signMessage(ethers.getBytes(commitmentHash));
+    console.log(chalk.gray(`  PartyA's signature: ${partyASignature.substring(0, 20)}...`));
 
     // Step 4: Submit signed commitment to server
     console.log(chalk.yellow('\n📤 STEP 4: Submitting signed commitment to server...\n'));
@@ -261,14 +261,14 @@ async function purchaseContent(contentId) {
     const paymentResponse = await axios.post(`${SERVER_URL}/submit-commitment`, {
       invoiceId: invoice.id,
       commitment,
-      aliceSignature,
-      aliceRevocationHash
+      partyASignature,
+      partyARevocationHash
     });
 
-    const { bobSignature, revocationSecret } = paymentResponse.data;
+    const { partyBSignature, revocationSecret } = paymentResponse.data;
 
     console.log(chalk.green('✓ Payment accepted!'));
-    console.log(chalk.gray(`  Bob's signature: ${bobSignature.substring(0, 20)}...`));
+    console.log(chalk.gray(`  PartyB's signature: ${partyBSignature.substring(0, 20)}...`));
     console.log(chalk.magenta(`  Revocation secret received: ${revocationSecret.substring(0, 30)}...`));
 
     // Step 5: Decrypt content with revocation secret
@@ -284,8 +284,8 @@ async function purchaseContent(contentId) {
       console.log(chalk.gray('─'.repeat(60)));
 
       // Update local state with the commitment balances (use formatEther for consistent format)
-      aliceBalance = ethers.formatEther(ethers.parseEther(commitment.aliceBalance));
-      bobBalance = ethers.formatEther(ethers.parseEther(commitment.bobBalance));
+      partyABalance = ethers.formatEther(ethers.parseEther(commitment.partyABalance));
+      partyBBalance = ethers.formatEther(ethers.parseEther(commitment.partyBBalance));
       currentNonce = invoice.nonce;
 
       // Store purchased content
@@ -301,14 +301,14 @@ async function purchaseContent(contentId) {
       console.log(chalk.green(`\n✓ Content successfully purchased and decrypted!`));
       console.log(chalk.cyan(`Updated channel state:`));
       console.log(chalk.gray(`  Nonce: ${currentNonce}`));
-      console.log(chalk.gray(`  Alice balance: ${parseFloat(aliceBalance).toFixed(4)} ETH`));
-      console.log(chalk.gray(`  Bob balance: ${parseFloat(bobBalance).toFixed(4)} ETH`));
+      console.log(chalk.gray(`  PartyA balance: ${parseFloat(partyABalance).toFixed(4)} ETH`));
+      console.log(chalk.gray(`  PartyB balance: ${parseFloat(partyBBalance).toFixed(4)} ETH`));
 
-      // Step 6: Reveal Alice's old revocation secret (if applicable)
+      // Step 6: Reveal PartyA's old revocation secret (if applicable)
       if (currentNonce > 1) {
         console.log(chalk.yellow('\n🔐 STEP 6: Revealing old revocation secret...\n'));
-        const oldSecret = aliceRevocationManager.revealSecret(currentNonce - 1);
-        console.log(chalk.gray(`  Alice reveals secret for nonce ${currentNonce - 1}: ${oldSecret.substring(0, 30)}...`));
+        const oldSecret = partyARevocationManager.revealSecret(currentNonce - 1);
+        console.log(chalk.gray(`  PartyA reveals secret for nonce ${currentNonce - 1}: ${oldSecret.substring(0, 30)}...`));
         console.log(chalk.gray(`  This revokes the previous commitment\n`));
       }
 
@@ -384,8 +384,8 @@ async function mainMenu() {
       console.log(chalk.cyan('\n📊 Channel State:\n'));
       console.log(chalk.gray(`  Channel: ${channelAddress}`));
       console.log(chalk.gray(`  Current nonce: ${currentNonce}`));
-      console.log(chalk.gray(`  Alice balance: ${parseFloat(aliceBalance).toFixed(4)} ETH`));
-      console.log(chalk.gray(`  Bob balance: ${parseFloat(bobBalance).toFixed(4)} ETH`));
+      console.log(chalk.gray(`  PartyA balance: ${parseFloat(partyABalance).toFixed(4)} ETH`));
+      console.log(chalk.gray(`  PartyB balance: ${parseFloat(partyBBalance).toFixed(4)} ETH`));
       console.log(chalk.gray(`  Total purchased: ${purchasedContent.length} items\n`));
       break;
 

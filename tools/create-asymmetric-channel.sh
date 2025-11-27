@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Create safe channel with initial commitment (refund protection)
-# Alice gets Bob's signature BEFORE funding the channel
+# PartyA gets PartyB's signature BEFORE funding the channel
 # Requires: anvil running on localhost:8545
 
 set -e
@@ -15,17 +15,17 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Anvil test accounts
-ALICE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-ALICE_ADDR="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-BOB_KEY="0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-BOB_ADDR="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+PARTYA_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+PARTYA_ADDR="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+PARTYB_KEY="0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+PARTYB_ADDR="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 
 RPC_URL="http://localhost:8545"
 CLI="node cli/index.js"
 
-# Data paths for Alice and Bob
-ALICE_DATA="/tmp/alice-safe-channel"
-BOB_DATA="/tmp/bob-safe-channel"
+# Data paths for PartyA and PartyB
+PARTYA_DATA="/tmp/partyA-safe-channel"
+PARTYB_DATA="/tmp/partyB-safe-channel"
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║      Safe Channel Creation with Refund Protection         ║${NC}"
@@ -44,25 +44,25 @@ echo -e "${GREEN}✓ Anvil is running${NC}"
 
 # Clean up old data
 echo -e "\n${YELLOW}Cleaning up old test data...${NC}"
-rm -rf "$ALICE_DATA" "$BOB_DATA"
-mkdir -p "$ALICE_DATA" "$BOB_DATA"
+rm -rf "$PARTYA_DATA" "$PARTYB_DATA"
+mkdir -p "$PARTYA_DATA" "$PARTYB_DATA"
 echo -e "${GREEN}✓ Data directories created${NC}"
 
 # Helper functions
-alice() {
-    PRIVATE_KEY=$ALICE_KEY RPC_URL=$RPC_URL DATA_PATH=$ALICE_DATA $CLI "$@"
+partyA() {
+    PRIVATE_KEY=$PARTYA_KEY RPC_URL=$RPC_URL DATA_PATH=$PARTYA_DATA $CLI "$@"
 }
 
-bob() {
-    PRIVATE_KEY=$BOB_KEY RPC_URL=$RPC_URL DATA_PATH=$BOB_DATA $CLI "$@"
+partyB() {
+    PRIVATE_KEY=$PARTYB_KEY RPC_URL=$RPC_URL DATA_PATH=$PARTYB_DATA $CLI "$@"
 }
 
-# Step 1: Alice creates initial commitment (no funding)
-echo -e "\n${BLUE}═══ Step 1: Alice Creates Initial Commitment ═══${NC}"
-echo -e "${YELLOW}Alice creates channel with initial commitment (1 ETH planned)...${NC}"
+# Step 1: PartyA creates initial commitment (no funding)
+echo -e "\n${BLUE}═══ Step 1: PartyA Creates Initial Commitment ═══${NC}"
+echo -e "${YELLOW}PartyA creates channel with initial commitment (1 ETH planned)...${NC}"
 
 # Create initial commitment and capture output
-COMMITMENT_OUTPUT=$(alice create-initial-commitment -p $BOB_ADDR -a 1.0 2>&1)
+COMMITMENT_OUTPUT=$(partyA create-initial-commitment -p $PARTYB_ADDR -a 1.0 2>&1)
 echo "$COMMITMENT_OUTPUT"
 
 # Extract the JSON commitment data
@@ -77,45 +77,45 @@ fi
 CHANNEL_ADDR=$(echo "$COMMITMENT_JSON" | grep -o '"channelAddress":"[^"]*' | cut -d'"' -f4)
 echo -e "${GREEN}✓ Channel deployed at: $CHANNEL_ADDR (NOT funded yet)${NC}"
 
-# Save commitment for Bob
-echo "$COMMITMENT_JSON" > "$ALICE_DATA/commitment.json"
+# Save commitment for PartyB
+echo "$COMMITMENT_JSON" > "$PARTYA_DATA/commitment.json"
 
-# Step 2: Bob signs the initial commitment
-echo -e "\n${BLUE}═══ Step 2: Bob Signs Initial Commitment ═══${NC}"
-echo -e "${YELLOW}Bob signing Alice's initial commitment...${NC}"
-echo -e "${CYAN}This gives Alice a refund path before she funds the channel${NC}"
+# Step 2: PartyB signs the initial commitment
+echo -e "\n${BLUE}═══ Step 2: PartyB Signs Initial Commitment ═══${NC}"
+echo -e "${YELLOW}PartyB signing PartyA's initial commitment...${NC}"
+echo -e "${CYAN}This gives PartyA a refund path before she funds the channel${NC}"
 
-# Bob signs the commitment
-BOB_SIGNATURE=$(bob sign-commitment -d "$COMMITMENT_JSON" 2>&1 | tail -n 1)
+# PartyB signs the commitment
+PARTYB_SIGNATURE=$(partyB sign-commitment -d "$COMMITMENT_JSON" 2>&1 | tail -n 1)
 
-if [ -z "$BOB_SIGNATURE" ]; then
-    echo -e "${RED}Failed to get Bob's signature${NC}"
+if [ -z "$PARTYB_SIGNATURE" ]; then
+    echo -e "${RED}Failed to get PartyB's signature${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}✓ Bob signed the commitment${NC}"
-echo -e "${CYAN}Bob's response: ${BOB_SIGNATURE:0:60}...${NC}"
+echo -e "${GREEN}✓ PartyB signed the commitment${NC}"
+echo -e "${CYAN}PartyB's response: ${PARTYB_SIGNATURE:0:60}...${NC}"
 
-# Step 3: Alice finalizes and funds the channel
-echo -e "\n${BLUE}═══ Step 3: Alice Finalizes and Funds Channel ═══${NC}"
-echo -e "${YELLOW}Alice verifying Bob's signature...${NC}"
-echo -e "${CYAN}Now it's safe to fund the channel - Alice has refund protection!${NC}"
+# Step 3: PartyA finalizes and funds the channel
+echo -e "\n${BLUE}═══ Step 3: PartyA Finalizes and Funds Channel ═══${NC}"
+echo -e "${YELLOW}PartyA verifying PartyB's signature...${NC}"
+echo -e "${CYAN}Now it's safe to fund the channel - PartyA has refund protection!${NC}"
 
-alice finalize-and-fund -c $CHANNEL_ADDR -a 1.0 -d "$BOB_SIGNATURE" --auto-open
+partyA finalize-and-fund -c $CHANNEL_ADDR -a 1.0 -d "$PARTYB_SIGNATURE" --auto-open
 echo -e "${GREEN}✓ Channel funded with refund protection and opened${NC}"
 
-# Step 4: Optional - Bob can fund the channel too
-echo -e "\n${BLUE}═══ Step 4: Bob Funds Channel (Optional) ═══${NC}"
-echo -e "${YELLOW}Bob can optionally add funds to the channel...${NC}"
-bob fund-channel -c $CHANNEL_ADDR -a 0.01
-echo -e "${GREEN}✓ Bob funded channel with 0.01 ETH${NC}"
+# Step 4: Optional - PartyB can fund the channel too
+echo -e "\n${BLUE}═══ Step 4: PartyB Funds Channel (Optional) ═══${NC}"
+echo -e "${YELLOW}PartyB can optionally add funds to the channel...${NC}"
+partyB fund-channel -c $CHANNEL_ADDR -a 0.01
+echo -e "${GREEN}✓ PartyB funded channel with 0.01 ETH${NC}"
 
 # Step 5: Show channel status
 echo -e "\n${BLUE}═══ Step 5: Channel Status ═══${NC}"
-echo -e "${YELLOW}Alice's view:${NC}"
-alice status -c $CHANNEL_ADDR
-echo -e "\n${YELLOW}Bob's view:${NC}"
-bob status -c $CHANNEL_ADDR
+echo -e "${YELLOW}PartyA's view:${NC}"
+partyA status -c $CHANNEL_ADDR
+echo -e "\n${YELLOW}PartyB's view:${NC}"
+partyB status -c $CHANNEL_ADDR
 
 # Summary
 echo -e "\n${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
@@ -123,18 +123,18 @@ echo -e "${BLUE}║          Safe Channel Created Successfully!                �
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
 echo -e ""
 echo -e "${GREEN}✅ Key Security Features:${NC}"
-echo -e "  • Alice got Bob's signature BEFORE funding"
-echo -e "  • Alice has guaranteed refund path (initial commitment)"
+echo -e "  • PartyA got PartyB's signature BEFORE funding"
+echo -e "  • PartyA has guaranteed refund path (initial commitment)"
 echo -e "  • Channel funded only after signatures exchanged"
 echo -e "  • No risk of fund lockup"
 echo -e ""
 echo -e "Channel Address: ${YELLOW}$CHANNEL_ADDR${NC}"
-echo -e "Alice Data Path: ${YELLOW}$ALICE_DATA${NC}"
-echo -e "Bob Data Path:   ${YELLOW}$BOB_DATA${NC}"
+echo -e "PartyA Data Path: ${YELLOW}$PARTYA_DATA${NC}"
+echo -e "PartyB Data Path:   ${YELLOW}$PARTYB_DATA${NC}"
 echo -e ""
 echo -e "Deposits:"
-echo -e "  Alice (Party A): ${GREEN}1.0 ETH${NC}"
-echo -e "  Bob (Party B):   ${GREEN}0.01 ETH${NC}"
-echo -e "  Total:           ${GREEN}1.01 ETH${NC}"
+echo -e "  PartyA: ${GREEN}1.0 ETH${NC}"
+echo -e "  PartyB: ${GREEN}0.01 ETH${NC}"
+echo -e "  Total:  ${GREEN}1.01 ETH${NC}"
 echo -e ""
 echo -e "${YELLOW}Channel is ready for off-chain payments!${NC}"

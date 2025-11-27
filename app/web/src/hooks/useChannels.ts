@@ -19,8 +19,8 @@ export function useChannels(options: UseChannelsOptions = {}) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [channelAddress, setChannelAddress] = useState<string | null>(null);
   const [currentNonce, setCurrentNonce] = useState(0);
-  const [aliceBalance, setAliceBalance] = useState('0');
-  const [bobBalance, setBobBalance] = useState('0');
+  const [partyABalance, setPartyABalance] = useState('0');
+  const [partyBBalance, setPartyBBalance] = useState('0');
 
   const log = useCallback((message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
     onLog?.(message, type);
@@ -28,22 +28,22 @@ export function useChannels(options: UseChannelsOptions = {}) {
 
   const selectChannel = useCallback((channel: Channel) => {
     setChannelAddress(channel.address);
-    setAliceBalance(channel.aliceBalance);
-    setBobBalance(channel.bobBalance);
+    setPartyABalance(channel.partyABalance);
+    setPartyBBalance(channel.partyBBalance);
     setCurrentNonce(channel.nonce);
     log(`Selected channel: ${channel.address}`, 'info');
   }, [log]);
 
-  const updateChannelState = useCallback((alice: string, bob: string, nonce: number) => {
-    setAliceBalance(alice);
-    setBobBalance(bob);
+  const updateChannelState = useCallback((partyA: string, partyB: string, nonce: number) => {
+    setPartyABalance(partyA);
+    setPartyBBalance(partyB);
     setCurrentNonce(nonce);
 
     // Update channel in list
     if (channelAddress) {
       setChannels(prev => prev.map(ch =>
         ch.address === channelAddress
-          ? { ...ch, aliceBalance: alice, bobBalance: bob, nonce }
+          ? { ...ch, partyABalance: partyA, partyBBalance: partyB, nonce }
           : ch
       ));
     }
@@ -169,8 +169,8 @@ export function useChannels(options: UseChannelsOptions = {}) {
       // Create new channel entry - use formatEther to ensure consistent string format
       const newChannel: Channel = {
         address: newChannelAddress,
-        aliceBalance: formatEther(parseEther(yourDeposit)),
-        bobBalance: '0',
+        partyABalance: formatEther(parseEther(yourDeposit)),
+        partyBBalance: '0',
         nonce: 0,
         createdAt: Date.now(),
       };
@@ -178,8 +178,8 @@ export function useChannels(options: UseChannelsOptions = {}) {
       // Update state
       setChannels(prev => [...prev, newChannel]);
       setChannelAddress(newChannelAddress);
-      setAliceBalance(formatEther(parseEther(yourDeposit)));
-      setBobBalance('0');
+      setPartyABalance(formatEther(parseEther(yourDeposit)));
+      setPartyBBalance('0');
       setCurrentNonce(0);
 
       onProgress(5, 'Channel ready!');
@@ -209,14 +209,14 @@ export function useChannels(options: UseChannelsOptions = {}) {
       log('Initiating cooperative channel close...', 'info');
 
       // Convert balances to wei for consistent comparison, then back to ether string
-      const balanceAWei = parseEther(aliceBalance);
-      const balanceBWei = parseEther(bobBalance);
+      const balanceAWei = parseEther(partyABalance);
+      const balanceBWei = parseEther(partyBBalance);
       const balanceAStr = formatEther(balanceAWei);
       const balanceBStr = formatEther(balanceBWei);
 
       // Step 1: Request server signature
       log('Requesting server signature...', 'info');
-      const { bobSignature } = await api.requestCloseChannel(
+      const { partyBSignature } = await api.requestCloseChannel(
         serverUrl,
         channelAddress,
         balanceAStr,
@@ -234,7 +234,7 @@ export function useChannels(options: UseChannelsOptions = {}) {
 
       // Step 3: Sign with client wallet
       log('Signing close message...', 'info');
-      const aliceSignature = await signMessageAsync({
+      const partyASignature = await signMessageAsync({
         message: { raw: closeHash },
       });
       log('Close message signed', 'success');
@@ -245,7 +245,7 @@ export function useChannels(options: UseChannelsOptions = {}) {
         address: channelAddress as `0x${string}`,
         abi: contractAbi,
         functionName: 'cooperativeClose',
-        args: [balanceAWei, balanceBWei, aliceSignature, bobSignature],
+        args: [balanceAWei, balanceBWei, partyASignature, partyBSignature],
       });
 
       await publicClient.waitForTransactionReceipt({ hash: closeChannelHash });
@@ -254,8 +254,8 @@ export function useChannels(options: UseChannelsOptions = {}) {
       // Remove channel from list
       setChannels(prev => prev.filter(ch => ch.address !== channelAddress));
       setChannelAddress(null);
-      setAliceBalance('0');
-      setBobBalance('0');
+      setPartyABalance('0');
+      setPartyBBalance('0');
       setCurrentNonce(0);
 
       return true;
@@ -263,14 +263,14 @@ export function useChannels(options: UseChannelsOptions = {}) {
       log(`Channel close failed: ${(error as Error).message}`, 'error');
       throw error;
     }
-  }, [channelAddress, aliceBalance, bobBalance, publicClient, signMessageAsync, writeContractAsync, log]);
+  }, [channelAddress, partyABalance, partyBBalance, publicClient, signMessageAsync, writeContractAsync, log]);
 
   return {
     channels,
     channelAddress,
     currentNonce,
-    aliceBalance,
-    bobBalance,
+    partyABalance,
+    partyBBalance,
     selectChannel,
     updateChannelState,
     setupChannel,

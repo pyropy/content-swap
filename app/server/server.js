@@ -27,18 +27,18 @@ app.use(cors());
 
 const PORT = 3000;
 
-// Server's wallet (Bob - content seller)
-const bobPrivateKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
+// Server's wallet (PartyB - content seller)
+const partyBPrivateKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
 const provider = new ethers.JsonRpcProvider('http://localhost:8545');
-const bob = new ethers.Wallet(bobPrivateKey, provider);
+const partyB = new ethers.Wallet(partyBPrivateKey, provider);
 
 console.log(chalk.blue.bold('\n════════════════════════════════════════════════════════════════'));
 console.log(chalk.blue.bold('     PAYMENT CHANNEL CONTENT DELIVERY SERVER'));
 console.log(chalk.blue.bold('════════════════════════════════════════════════════════════════\n'));
 
 console.log(chalk.yellow('Server Configuration:'));
-console.log(chalk.white(`  Operator: Bob (Content Seller)`));
-console.log(chalk.gray(`  Address: ${bob.address}`));
+console.log(chalk.white(`  Operator: PartyB (Content Seller)`));
+console.log(chalk.gray(`  Address: ${partyB.address}`));
 console.log(chalk.gray(`  Port: ${PORT}\n`));
 
 // Content Encryption utilities
@@ -114,9 +114,9 @@ class RevocationKeyManager {
   }
 }
 
-// Initialize Bob's revocation key manager
-const bobRevocationManager = new RevocationKeyManager(
-  ethers.keccak256(ethers.toUtf8Bytes("bob-server-seed"))
+// Initialize PartyB's revocation key manager
+const partyBRevocationManager = new RevocationKeyManager(
+  ethers.keccak256(ethers.toUtf8Bytes("partyB-server-seed"))
 );
 
 // In-memory storage for channel states and content
@@ -174,7 +174,7 @@ async function loadChannelContract() {
     // For demo, we'll use environment variable or config file for channel address
     channelAddress = process.env.CHANNEL_ADDRESS;
     if (channelAddress) {
-      channelContract = new ethers.Contract(channelAddress, contractJson.abi, bob);
+      channelContract = new ethers.Contract(channelAddress, contractJson.abi, partyB);
       console.log(chalk.green(`✓ Using existing channel: ${channelAddress}\n`));
     } else {
       console.log(chalk.yellow('⚠ No channel address provided. Use CHANNEL_ADDRESS env variable.\n'));
@@ -213,12 +213,12 @@ app.get('/catalog', (req, res) => {
  * Returns encrypted content, invoice, and unsigned commitment
  */
 app.post('/request-content', async (req, res) => {
-  const { contentId, channelAddress: clientChannelAddress, aliceAddress } = req.body;
+  const { contentId, channelAddress: clientChannelAddress, partyAAddress } = req.body;
 
   console.log(chalk.cyan(`\n📦 Content request received:`));
   console.log(chalk.gray(`  Content ID: ${contentId}`));
   console.log(chalk.gray(`  Channel: ${clientChannelAddress}`));
-  console.log(chalk.gray(`  Alice address: ${aliceAddress}`));
+  console.log(chalk.gray(`  PartyA address: ${partyAAddress}`));
 
   // Validate channel is registered
   const channel = channels.get(clientChannelAddress);
@@ -231,8 +231,8 @@ app.post('/request-content', async (req, res) => {
   }
 
   // Validate caller is partyA
-  if (channel.partyA.toLowerCase() !== aliceAddress.toLowerCase()) {
-    console.log(chalk.red(`\n❌ Invalid caller: ${aliceAddress} is not partyA`));
+  if (channel.partyA.toLowerCase() !== partyAAddress.toLowerCase()) {
+    console.log(chalk.red(`\n❌ Invalid caller: ${partyAAddress} is not partyA`));
     return res.status(400).json({
       success: false,
       error: 'Invalid caller - not partyA'
@@ -240,12 +240,12 @@ app.post('/request-content', async (req, res) => {
   }
 
   // Use server's tracked balances
-  const currentAliceBalance = channel.currentAliceBalance;
-  const currentBobBalance = channel.currentBobBalance;
+  const currentPartyABalance = channel.currentPartyABalance;
+  const currentPartyBBalance = channel.currentPartyBBalance;
   const currentNonce = channel.latestNonce;
 
   console.log(chalk.gray(`  Server-tracked nonce: ${currentNonce}`));
-  console.log(chalk.gray(`  Server-tracked balances - Alice: ${currentAliceBalance}, Bob: ${currentBobBalance}`));
+  console.log(chalk.gray(`  Server-tracked balances - PartyA: ${currentPartyABalance}, PartyB: ${currentPartyBBalance}`));
 
   // Validate content exists
   const content = contentCatalog[contentId];
@@ -257,7 +257,7 @@ app.post('/request-content', async (req, res) => {
   }
 
   // Check if client has sufficient funds
-  const clientBalance = parseFloat(currentAliceBalance);
+  const clientBalance = parseFloat(currentPartyABalance);
   const price = parseFloat(content.price);
   if (clientBalance < price) {
     console.log(chalk.red(`\n❌ Insufficient funds:`));
@@ -267,7 +267,7 @@ app.post('/request-content', async (req, res) => {
       success: false,
       error: 'Insufficient funds',
       required: content.price,
-      available: currentAliceBalance
+      available: currentPartyABalance
     });
   }
 
@@ -275,25 +275,25 @@ app.post('/request-content', async (req, res) => {
   const newNonce = currentNonce + 1;
 
   // Calculate new balances after payment
-  const newAliceBalance = (parseFloat(currentAliceBalance) - parseFloat(content.price)).toString();
-  const newBobBalance = (parseFloat(currentBobBalance) + parseFloat(content.price)).toString();
+  const newPartyABalance = (parseFloat(currentPartyABalance) - parseFloat(content.price)).toString();
+  const newPartyBBalance = (parseFloat(currentPartyBBalance) + parseFloat(content.price)).toString();
 
   console.log(chalk.cyan('\n💰 Balance calculation:'));
   console.log(chalk.gray(`  Payment amount: ${content.price} ETH`));
-  console.log(chalk.gray(`  New Alice balance: ${newAliceBalance} ETH`));
-  console.log(chalk.gray(`  New Bob balance: ${newBobBalance} ETH`));
+  console.log(chalk.gray(`  New PartyA balance: ${newPartyABalance} ETH`));
+  console.log(chalk.gray(`  New PartyB balance: ${newPartyBBalance} ETH`));
 
-  // Generate Bob's revocation secret for this nonce
-  const bobRevocationSecret = bobRevocationManager.generateSecret(newNonce);
-  const bobRevocationHash = ethers.keccak256(bobRevocationSecret);
+  // Generate PartyB's revocation secret for this nonce
+  const partyBRevocationSecret = partyBRevocationManager.generateSecret(newNonce);
+  const partyBRevocationHash = ethers.keccak256(partyBRevocationSecret);
 
   console.log(chalk.yellow('\n🔐 Generated revocation secret:'));
   console.log(chalk.gray(`  Nonce: ${newNonce}`));
-  console.log(chalk.gray(`  Secret: ${bobRevocationSecret.substring(0, 30)}...`));
-  console.log(chalk.gray(`  Hash: ${bobRevocationHash.substring(0, 30)}...`));
+  console.log(chalk.gray(`  Secret: ${partyBRevocationSecret.substring(0, 30)}...`));
+  console.log(chalk.gray(`  Hash: ${partyBRevocationHash.substring(0, 30)}...`));
 
   // Encrypt content with the revocation secret
-  const encryptedContent = ContentEncryption.encrypt(content.content, bobRevocationSecret);
+  const encryptedContent = ContentEncryption.encrypt(content.content, partyBRevocationSecret);
 
   console.log(chalk.yellow('\n🔒 Encrypted content:'));
   console.log(chalk.gray(`  Size: ${encryptedContent.combined.length} bytes`));
@@ -302,17 +302,17 @@ app.post('/request-content', async (req, res) => {
   const commitment = {
     channelAddress: clientChannelAddress,
     nonce: newNonce,
-    aliceBalance: newAliceBalance,
-    bobBalance: newBobBalance,
-    bobRevocationHash: bobRevocationHash
-    // Note: aliceRevocationHash will be added by client
+    partyABalance: newPartyABalance,
+    partyBBalance: newPartyBBalance,
+    partyBRevocationHash: partyBRevocationHash
+    // Note: partyARevocationHash will be added by client
   };
 
   console.log(chalk.yellow('\n📝 Created unsigned commitment:'));
   console.log(chalk.gray(`  Channel: ${commitment.channelAddress}`));
   console.log(chalk.gray(`  Nonce: ${commitment.nonce}`));
-  console.log(chalk.gray(`  Alice balance: ${commitment.aliceBalance} ETH`));
-  console.log(chalk.gray(`  Bob balance: ${commitment.bobBalance} ETH`));
+  console.log(chalk.gray(`  PartyA balance: ${commitment.partyABalance} ETH`));
+  console.log(chalk.gray(`  PartyB balance: ${commitment.partyBBalance} ETH`));
 
   // Create invoice ID
   const invoiceId = ethers.keccak256(
@@ -328,9 +328,9 @@ app.post('/request-content', async (req, res) => {
     channelAddress: clientChannelAddress,
     nonce: newNonce,
     price: content.price,
-    bobRevocationSecret,
-    bobRevocationHash,
-    aliceAddress,
+    partyBRevocationSecret,
+    partyBRevocationHash,
+    partyAAddress,
     commitment,
     timestamp: Date.now()
   });
@@ -345,7 +345,7 @@ app.post('/request-content', async (req, res) => {
       title: content.title,
       price: content.price,
       nonce: newNonce,
-      bobRevocationHash,
+      partyBRevocationHash,
       encryptedContent: encryptedContent.combined,
       contentPreview: content.content.substring(0, 30) + '...',
       commitment: commitment // Include the unsigned commitment
@@ -361,8 +361,8 @@ app.post('/submit-commitment', async (req, res) => {
   const {
     invoiceId,
     commitment,
-    aliceSignature,
-    aliceRevocationHash
+    partyASignature,
+    partyARevocationHash
   } = req.body;
 
   console.log(chalk.cyan(`\n💳 Commitment received for invoice: ${invoiceId.substring(0, 20)}...`));
@@ -380,8 +380,8 @@ app.post('/submit-commitment', async (req, res) => {
   console.log(chalk.yellow('\n🔍 Verifying commitment:'));
   console.log(chalk.gray(`  Channel: ${commitment.channelAddress}`));
   console.log(chalk.gray(`  Nonce: ${commitment.nonce}`));
-  console.log(chalk.gray(`  Alice balance: ${commitment.aliceBalance} ETH`));
-  console.log(chalk.gray(`  Bob balance: ${commitment.bobBalance} ETH`));
+  console.log(chalk.gray(`  PartyA balance: ${commitment.partyABalance} ETH`));
+  console.log(chalk.gray(`  PartyB balance: ${commitment.partyBBalance} ETH`));
 
   // Recreate commitment hash
   const commitmentData = ethers.solidityPacked(
@@ -389,23 +389,23 @@ app.post('/submit-commitment', async (req, res) => {
     [
       commitment.channelAddress,
       commitment.nonce,
-      ethers.parseEther(commitment.aliceBalance),
-      ethers.parseEther(commitment.bobBalance),
-      aliceRevocationHash,
-      invoice.bobRevocationHash
+      ethers.parseEther(commitment.partyABalance),
+      ethers.parseEther(commitment.partyBBalance),
+      partyARevocationHash,
+      invoice.partyBRevocationHash
     ]
   );
 
   const commitmentHash = ethers.keccak256(commitmentData);
   console.log(chalk.gray(`  Commitment hash: ${commitmentHash.substring(0, 30)}...`));
 
-  // Verify Alice's signature
+  // Verify PartyA's signature
   const recoveredAddress = ethers.verifyMessage(
     ethers.getBytes(commitmentHash),
-    aliceSignature
+    partyASignature
   );
 
-  if (recoveredAddress.toLowerCase() !== invoice.aliceAddress.toLowerCase()) {
+  if (recoveredAddress.toLowerCase() !== invoice.partyAAddress.toLowerCase()) {
     console.log(chalk.red('❌ Invalid signature!'));
     return res.status(400).json({
       success: false,
@@ -413,7 +413,7 @@ app.post('/submit-commitment', async (req, res) => {
     });
   }
 
-  console.log(chalk.green('✓ Alice\'s signature verified'));
+  console.log(chalk.green('✓ PartyA\'s signature verified'));
 
   // Validate commitment matches invoice expectations
   const channel = channels.get(commitment.channelAddress);
@@ -434,42 +434,42 @@ app.post('/submit-commitment', async (req, res) => {
   }
 
   // Verify balances match expected values from invoice
-  const expectedAliceBalance = invoice.commitment.aliceBalance;
-  const expectedBobBalance = invoice.commitment.bobBalance;
-  if (commitment.aliceBalance !== expectedAliceBalance || commitment.bobBalance !== expectedBobBalance) {
+  const expectedPartyABalance = invoice.commitment.partyABalance;
+  const expectedPartyBBalance = invoice.commitment.partyBBalance;
+  if (commitment.partyABalance !== expectedPartyABalance || commitment.partyBBalance !== expectedPartyBBalance) {
     console.log(chalk.red(`❌ Balance mismatch:`));
-    console.log(chalk.gray(`  Expected Alice: ${expectedAliceBalance}, got: ${commitment.aliceBalance}`));
-    console.log(chalk.gray(`  Expected Bob: ${expectedBobBalance}, got: ${commitment.bobBalance}`));
+    console.log(chalk.gray(`  Expected PartyA: ${expectedPartyABalance}, got: ${commitment.partyABalance}`));
+    console.log(chalk.gray(`  Expected PartyB: ${expectedPartyBBalance}, got: ${commitment.partyBBalance}`));
     return res.status(400).json({
       success: false,
       error: 'Invalid balances'
     });
   }
 
-  // Bob signs the commitment
-  console.log(chalk.yellow('\n✍️ Bob counter-signing commitment...'));
-  const bobSignature = await bob.signMessage(ethers.getBytes(commitmentHash));
-  console.log(chalk.gray(`  Bob's signature: ${bobSignature.substring(0, 30)}...`));
+  // PartyB signs the commitment
+  console.log(chalk.yellow('\n✍️ PartyB counter-signing commitment...'));
+  const partyBSignature = await partyB.signMessage(ethers.getBytes(commitmentHash));
+  console.log(chalk.gray(`  PartyB's signature: ${partyBSignature.substring(0, 30)}...`));
 
   // Store the completed commitment and update balances
   channel.commitments.push({
     nonce: commitment.nonce,
     hash: commitmentHash,
-    aliceBalance: commitment.aliceBalance,
-    bobBalance: commitment.bobBalance,
-    aliceSignature,
-    bobSignature,
+    partyABalance: commitment.partyABalance,
+    partyBBalance: commitment.partyBBalance,
+    partyASignature,
+    partyBSignature,
     timestamp: Date.now()
   });
   channel.latestNonce = commitment.nonce;
-  channel.currentAliceBalance = commitment.aliceBalance;
-  channel.currentBobBalance = commitment.bobBalance;
+  channel.currentPartyABalance = commitment.partyABalance;
+  channel.currentPartyBBalance = commitment.partyBBalance;
 
   console.log(chalk.green('✓ Commitment accepted and stored'));
-  console.log(chalk.cyan(`  Updated balances - Alice: ${channel.currentAliceBalance}, Bob: ${channel.currentBobBalance}`));
+  console.log(chalk.cyan(`  Updated balances - PartyA: ${channel.currentPartyABalance}, PartyB: ${channel.currentPartyBBalance}`));
 
-  // Reveal Bob's revocation secret (which is the decryption key!)
-  const revocationSecret = invoice.bobRevocationSecret;
+  // Reveal PartyB's revocation secret (which is the decryption key!)
+  const revocationSecret = invoice.partyBRevocationSecret;
 
   console.log(chalk.magenta('\n🔓 Revealing revocation secret (decryption key):'));
   console.log(chalk.gray(`  Secret: ${revocationSecret.substring(0, 40)}...`));
@@ -479,7 +479,7 @@ app.post('/submit-commitment', async (req, res) => {
 
   res.json({
     success: true,
-    bobSignature,
+    partyBSignature,
     revocationSecret,
     message: 'Payment accepted! Use the revocation secret to decrypt your content.'
   });
@@ -537,8 +537,8 @@ app.get('/channel/:address', (req, res) => {
     channel: {
       address,
       latestNonce: channel.latestNonce,
-      currentAliceBalance: channel.currentAliceBalance,
-      currentBobBalance: channel.currentBobBalance,
+      currentPartyABalance: channel.currentPartyABalance,
+      currentPartyBBalance: channel.currentPartyBBalance,
       totalCommitments: channel.commitments.length,
       latestCommitment: channel.commitments[channel.commitments.length - 1]
     }
@@ -569,7 +569,7 @@ app.get('/contract', (req, res) => {
 app.get('/server-info', (req, res) => {
   res.json({
     success: true,
-    address: bob.address,
+    address: partyB.address,
     defaultDeposit: '0.001'
   });
 });
@@ -612,7 +612,7 @@ app.post('/register-channel', async (req, res) => {
     console.log(chalk.gray(`  State: ${stateIndex}`));
 
     // Verify server is partyB
-    if (partyB.toLowerCase() !== bob.address.toLowerCase()) {
+    if (partyB.toLowerCase() !== partyB.address.toLowerCase()) {
       throw new Error('Server is not partyB in this channel');
     }
 
@@ -643,8 +643,8 @@ app.post('/register-channel', async (req, res) => {
 
     // Get existing channel data (may have been created during initial commitment signing)
     const existingChannel = channels.get(addr);
-    const initialAliceBalance = ethers.formatEther(depositA);
-    const initialBobBalance = ethers.formatEther(depositB);
+    const initialPartyABalance = ethers.formatEther(depositA);
+    const initialPartyBBalance = ethers.formatEther(depositB);
 
     // Initialize or update channel tracking with current balances
     channels.set(addr, {
@@ -652,15 +652,15 @@ app.post('/register-channel', async (req, res) => {
       latestNonce: existingChannel?.latestNonce || 0,
       partyA,
       partyB,
-      initialBalanceA: initialAliceBalance,
-      initialBalanceB: initialBobBalance,
-      currentAliceBalance: existingChannel?.currentAliceBalance || initialAliceBalance,
-      currentBobBalance: existingChannel?.currentBobBalance || initialBobBalance,
+      initialBalanceA: initialPartyABalance,
+      initialBalanceB: initialPartyBBalance,
+      currentPartyABalance: existingChannel?.currentPartyABalance || initialPartyABalance,
+      currentPartyBBalance: existingChannel?.currentPartyBBalance || initialPartyBBalance,
       pendingFunding: false
     });
 
     console.log(chalk.green(`\n✓ Channel registered: ${addr}`));
-    console.log(chalk.cyan(`  Initial balances - Alice: ${initialAliceBalance}, Bob: ${initialBobBalance}`));
+    console.log(chalk.cyan(`  Initial balances - PartyA: ${initialPartyABalance}, PartyB: ${initialPartyBBalance}`));
 
     res.json({
       success: true,
@@ -720,7 +720,7 @@ app.post('/sign-initial-commitment', async (req, res) => {
     }
 
     // Verify server is partyB
-    if (partyB.toLowerCase() !== bob.address.toLowerCase()) {
+    if (partyB.toLowerCase() !== partyB.address.toLowerCase()) {
       throw new Error('Server is not partyB in this channel');
     }
 
@@ -742,14 +742,14 @@ app.post('/sign-initial-commitment', async (req, res) => {
     console.log(chalk.green('✓ Client signature verified'));
 
     // Generate server's revocation hash for this commitment (nonce 0)
-    const serverRevocationSecret = bobRevocationManager.generateSecret(0);
+    const serverRevocationSecret = partyBRevocationManager.generateSecret(0);
     const serverRevocationHash = ethers.keccak256(serverRevocationSecret);
 
     console.log(chalk.yellow('\n🔐 Generated server revocation hash:'));
     console.log(chalk.gray(`  Hash: ${serverRevocationHash.substring(0, 30)}...`));
 
     // Sign the commitment hash
-    const serverSignature = await bob.signMessage(ethers.getBytes(commitmentHash));
+    const serverSignature = await partyB.signMessage(ethers.getBytes(commitmentHash));
 
     console.log(chalk.green('✓ Commitment signed by server'));
     console.log(chalk.gray(`  Signature: ${serverSignature.substring(0, 30)}...`));
@@ -759,12 +759,12 @@ app.post('/sign-initial-commitment', async (req, res) => {
       commitments: [{
         nonce: 0,
         hash: commitmentHash,
-        aliceBalance: clientDeposit,
-        bobBalance: '0',
-        aliceSignature: clientSignature,
-        bobSignature: serverSignature,
-        aliceRevocationHash: clientRevocationHash,
-        bobRevocationHash: serverRevocationHash,
+        partyABalance: clientDeposit,
+        partyBBalance: '0',
+        partyASignature: clientSignature,
+        partyBSignature: serverSignature,
+        partyARevocationHash: clientRevocationHash,
+        partyBRevocationHash: serverRevocationHash,
         timestamp: Date.now()
       }],
       latestNonce: 0,
@@ -772,8 +772,8 @@ app.post('/sign-initial-commitment', async (req, res) => {
       partyB,
       initialBalanceA: clientDeposit,
       initialBalanceB: '0',
-      currentAliceBalance: clientDeposit,
-      currentBobBalance: '0',
+      currentPartyABalance: clientDeposit,
+      currentPartyBBalance: '0',
       pendingFunding: true
     });
 
@@ -816,17 +816,17 @@ app.post('/close-channel', async (req, res) => {
 
     // Validate requested balances match server's tracked state (compare as wei to avoid floating-point issues)
     console.log(chalk.yellow('\n🔍 Validating balances against server state:'));
-    console.log(chalk.gray(`  Server-tracked Alice: ${channel.currentAliceBalance} ETH`));
-    console.log(chalk.gray(`  Server-tracked Bob: ${channel.currentBobBalance} ETH`));
+    console.log(chalk.gray(`  Server-tracked PartyA: ${channel.currentPartyABalance} ETH`));
+    console.log(chalk.gray(`  Server-tracked PartyB: ${channel.currentPartyBBalance} ETH`));
 
-    const requestedAliceWei = ethers.parseEther(balanceA);
-    const requestedBobWei = ethers.parseEther(balanceB);
-    const trackedAliceWei = ethers.parseEther(channel.currentAliceBalance);
-    const trackedBobWei = ethers.parseEther(channel.currentBobBalance);
+    const requestedPartyAWei = ethers.parseEther(balanceA);
+    const requestedPartyBWei = ethers.parseEther(balanceB);
+    const trackedPartyAWei = ethers.parseEther(channel.currentPartyABalance);
+    const trackedPartyBWei = ethers.parseEther(channel.currentPartyBBalance);
 
-    if (requestedAliceWei !== trackedAliceWei || requestedBobWei !== trackedBobWei) {
+    if (requestedPartyAWei !== trackedPartyAWei || requestedPartyBWei !== trackedPartyBWei) {
       console.log(chalk.red(`\n❌ Balance mismatch with server state`));
-      throw new Error(`Balance mismatch: expected Alice=${channel.currentAliceBalance}, Bob=${channel.currentBobBalance}`);
+      throw new Error(`Balance mismatch: expected PartyA=${channel.currentPartyABalance}, PartyB=${channel.currentPartyBBalance}`);
     }
 
     console.log(chalk.green('✓ Balances match server state'));
@@ -855,15 +855,15 @@ app.post('/close-channel', async (req, res) => {
       )
     );
 
-    // Sign with Bob's key
-    const bobSignature = await bob.signMessage(ethers.getBytes(closeHash));
+    // Sign with PartyB's key
+    const partyBSignature = await partyB.signMessage(ethers.getBytes(closeHash));
 
     console.log(chalk.green(`\n✓ Close message signed`));
     console.log(chalk.gray(`  Close hash: ${closeHash.substring(0, 30)}...`));
 
     res.json({
       success: true,
-      bobSignature,
+      partyBSignature,
       closeHash
     });
   } catch (error) {

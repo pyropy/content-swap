@@ -14,8 +14,8 @@ help:
 	@echo "  make all           - Install, build, test, and update ABIs"
 	@echo ""
 	@echo "Application commands:"
-	@echo "  make server        - Start the demo server (Bob)"
-	@echo "  make client        - Start the demo client (Alice)"
+	@echo "  make server        - Start the demo server (PartyB)"
+	@echo "  make client        - Start the demo client (PartyA)"
 	@echo "  make web           - Start the web application"
 	@echo "  make cli-link      - Link CLI tool globally"
 	@echo ""
@@ -112,14 +112,14 @@ anvil:
 	@echo "Starting Anvil local blockchain..."
 	anvil
 
-# Start demo server (Bob - content provider)
+# Start demo server (PartyB - content provider)
 server:
-	@echo "Starting demo server (Bob)..."
+	@echo "Starting demo server (PartyB)..."
 	cd app/server && npm start
 
-# Start demo client (Alice - content consumer)
+# Start demo client (PartyA - content consumer)
 client:
-	@echo "Starting demo client (Alice)..."
+	@echo "Starting demo client (PartyA)..."
 	cd app/server && npm run client
 
 # Start web application
