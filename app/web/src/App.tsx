@@ -1,38 +1,36 @@
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
-import { StatusBar } from './components/StatusBar';
-import { Tabs, type TabId } from './components/Tabs';
 import { VideoFeed } from './components/VideoFeed';
 import { Purchased } from './components/Purchased';
-import { Logs } from './components/Logs';
-import { ChannelSetup } from './components/ChannelSetup';
-import { Settings } from './components/Settings';
+import { Profile } from './components/Profile';
+import { BottomNav } from './components/BottomNav';
+import { AccountSetup } from './components/AccountSetup';
 import { useAppState } from './hooks/useAppState';
 import './App.css';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<TabId>('catalog');
+  const [activeView, setActiveView] = useState<'feed' | 'purchased' | 'profile'>('feed');
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [setupStep, setSetupStep] = useState(0);
+  const [setupMessage, setSetupMessage] = useState('');
+  const [isSettingUpChannel, setIsSettingUpChannel] = useState(false);
 
   const { isConnected } = useAccount();
 
   const {
     address,
     onWalletConnect,
-    channels,
     channelAddress,
-    selectChannel,
     currentNonce,
     aliceBalance,
     bobBalance,
     catalog,
     loadCatalog,
     purchasedContent,
-    purchaseContent,
     purchaseVideo,
     serverAddress,
     serverConnected,
-    contractAbi,
     loadServerInfo,
     serverUrl,
     setServerUrl,
@@ -40,6 +38,7 @@ function App() {
     addLog,
     setupChannel,
     closeChannel,
+    resetChannelState,
   } = useAppState();
 
   // Initialize revocation seed when wallet connects
@@ -73,7 +72,33 @@ function App() {
     connectToServer();
   }, []);
 
+  // Check if onboarding should be shown
+  useEffect(() => {
+    const hasSeenOnboarding = localStorage.getItem('hasSeenOnboarding');
+
+    // Show onboarding for new users (no flag set) or
+    // when user has disconnected and wants to reconnect
+    if (!hasSeenOnboarding) {
+      // First time user
+      if (!isConnected) {
+        setShowOnboarding(true);
+      }
+    }
+  }, []); // Only run once on mount
+
   const handlePurchase = async (videoId: string, purchaseType: 'full' | 'segment', segmentName?: string) => {
+    // Check if wallet is connected
+    if (!isConnected) {
+      setShowOnboarding(true);
+      return undefined;
+    }
+
+    // Check if channel exists
+    if (!channelAddress) {
+      setShowOnboarding(true);
+      return undefined;
+    }
+
     setPurchasing(videoId);
     try {
       addLog(`Purchase request: ${videoId} (${purchaseType})`, 'info');
@@ -95,69 +120,106 @@ function App() {
     }
   };
 
+  const handleChannelSetup = async (fundAmount: string) => {
+    setIsSettingUpChannel(true);
+    try {
+      // Update progress callbacks
+      const updateProgress = (step: number, message: string) => {
+        setSetupStep(step);
+        setSetupMessage(message);
+      };
+
+      await setupChannel(
+        fundAmount,
+        86400, // 24 hour dispute period
+        updateProgress
+      );
+
+      // Mark onboarding as complete
+      localStorage.setItem('hasSeenOnboarding', 'true');
+    } catch (error) {
+      addLog(`Channel setup failed: ${(error as Error).message}`, 'error');
+      throw error;
+    } finally {
+      setIsSettingUpChannel(false);
+    }
+  };
+
+  const handleOnboardingClose = () => {
+    setShowOnboarding(false);
+    localStorage.setItem('hasSeenOnboarding', 'true');
+  };
 
   return (
-    <>
-      <StatusBar
-        walletAddress={address || null}
-        channelAddress={channelAddress}
-        currentNonce={currentNonce}
-        aliceBalance={aliceBalance}
-        bobBalance={bobBalance}
+    <div className="app-container">
+      {/* Account Setup Modal */}
+      <AccountSetup
+        isOpen={showOnboarding}
+        onClose={handleOnboardingClose}
+        onChannelSetup={handleChannelSetup}
+        channelExists={!!channelAddress}
+        isSettingUp={isSettingUpChannel}
+        setupStep={setupStep}
+        setupMessage={setupMessage}
       />
 
-      {/* Video feed gets full screen without container */}
-      {activeTab === 'catalog' ? (
-        <>
-          <Tabs activeTab={activeTab} onTabChange={setActiveTab} />
-          <VideoFeed
-            items={catalog}
-            serverUrl={serverUrl}
-            channelAddress={channelAddress}
-            walletConnected={isConnected}
-            channelActive={!!channelAddress}
-            clientBalance={aliceBalance}
-            onPurchase={handlePurchase}
-            purchasing={purchasing}
-          />
-        </>
-      ) : (
-        <>
-          <Tabs activeTab={activeTab} onTabChange={setActiveTab} />
-          <div className="container">
-            {activeTab === 'purchased' && (
-              <Purchased items={purchasedContent} />
-            )}
-
-            {activeTab === 'logs' && (
-              <Logs logs={logs} />
-            )}
-
-            {activeTab === 'channel-setup' && (
-              <ChannelSetup
-                channels={channels}
-                activeChannelAddress={channelAddress}
-                serverAddress={serverAddress}
-                serverConnected={serverConnected}
-                walletConnected={isConnected}
-                contractLoaded={!!contractAbi}
-                onSelectChannel={selectChannel}
-                onSetupChannel={setupChannel}
-                onCloseChannel={closeChannel}
-              />
-            )}
-
-            {activeTab === 'settings' && (
-              <Settings
-                serverUrl={serverUrl}
-                onServerUrlChange={setServerUrl}
-                onServerUrlSave={handleServerUrlSave}
-              />
-            )}
-          </div>
-        </>
+      {/* Main Content Views */}
+      {activeView === 'feed' && (
+        <VideoFeed
+          items={catalog}
+          serverUrl={serverUrl}
+          channelAddress={channelAddress}
+          walletConnected={isConnected}
+          channelActive={!!channelAddress}
+          clientBalance={aliceBalance}
+          onPurchase={handlePurchase}
+          purchasing={purchasing}
+          onAccountClick={() => {
+            // If not connected or no channel, show onboarding
+            if (!isConnected || !channelAddress) {
+              setShowOnboarding(true);
+            } else {
+              // Otherwise, switch to profile view
+              setActiveView('profile');
+            }
+          }}
+        />
       )}
-    </>
+
+      {activeView === 'purchased' && (
+        <div className="purchased-view">
+          <div className="view-header">
+            <h1>Your Library</h1>
+          </div>
+          <Purchased items={purchasedContent} />
+        </div>
+      )}
+
+      {activeView === 'profile' && (
+        <Profile
+          channelAddress={channelAddress}
+          aliceBalance={aliceBalance}
+          bobBalance={bobBalance}
+          currentNonce={currentNonce}
+          serverUrl={serverUrl}
+          serverConnected={serverConnected}
+          serverAddress={serverAddress}
+          onServerUrlChange={setServerUrl}
+          onServerUrlSave={handleServerUrlSave}
+          onCloseChannel={closeChannel}
+          onResetChannel={resetChannelState}
+          onClose={() => setActiveView('feed')}
+          logs={logs}
+        />
+      )}
+
+      {/* Bottom Navigation */}
+      <BottomNav
+        activeView={activeView}
+        onViewChange={setActiveView}
+        purchasedCount={purchasedContent.length}
+      />
+    </div>
   );
 }
 

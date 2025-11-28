@@ -193,6 +193,16 @@ export function useChannels(options: UseChannelsOptions = {}) {
     }
   }, [walletClient, publicClient, writeContractAsync, signMessageAsync, log]);
 
+  const resetChannelState = useCallback(() => {
+    // Reset all channel-related state
+    setChannels([]);
+    setChannelAddress(null);
+    setPartyABalance('0');
+    setPartyBBalance('0');
+    setCurrentNonce(0);
+    log('Channel state reset', 'info');
+  }, [log]);
+
   const closeChannel = useCallback(async (
     config: {
       serverUrl: string;
@@ -274,6 +284,7 @@ export function useChannels(options: UseChannelsOptions = {}) {
     selectChannel,
     updateChannelState,
     setupChannel,
+    resetChannelState,
     closeChannel,
   };
 }

@@ -1,7 +1,11 @@
 .video-feed-container {
-  position: relative;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   width: 100%;
-  height: calc(100vh - 120px); /* Account for StatusBar and Tabs height */
+  height: 100vh;
   background: #000;
   overflow: hidden;
 }
@@ -188,8 +192,8 @@
   display: flex;
   gap: 8px;
   justify-content: center;
-  padding: 20px 0;
-  margin-top: auto;
+  padding: 15px 0 20px 0;
+  margin-top: 10px;
 }
 
 .dot {
@@ -261,31 +265,63 @@
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-/* Navigation Hints */
-.navigation-hints {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  pointer-events: none;
-  z-index: 5;
+/* Navigation Arrows */
+.navigation-arrows {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  padding: 20px 0;
+  margin-top: 20px;
 }
 
-.hint-up,
-.hint-down {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 14px;
-  animation: pulse 2s infinite;
+.nav-arrow {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  position: relative;
 }
 
-.hint-up {
-  top: 20px;
+.nav-arrow:hover {
+  background: rgba(0, 255, 136, 0.2);
+  border-color: #00ff88;
+  color: #00ff88;
+  transform: scale(1.1);
 }
 
-.hint-down {
-  bottom: 20px;
+.nav-arrow:active {
+  transform: scale(0.95);
+}
+
+.nav-arrow svg {
+  width: 30px;
+  height: 30px;
+}
+
+/* Add subtle animation on hover */
+.nav-arrow-up:hover svg {
+  animation: bounceUp 0.5s ease;
+}
+
+.nav-arrow-down:hover svg {
+  animation: bounceDown 0.5s ease;
+}
+
+@keyframes bounceUp {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes bounceDown {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(3px); }
 }
 
 @keyframes pulse {
@@ -318,6 +354,22 @@
   .interaction-buttons {
     justify-content: space-around;
   }
+
+  /* Adjust navigation arrows for mobile */
+  .navigation-arrows {
+    gap: 15px;
+    padding: 15px 0;
+  }
+
+  .nav-arrow {
+    width: 45px;
+    height: 45px;
+  }
+
+  .nav-arrow svg {
+    width: 25px;
+    height: 25px;
+  }
 }
 
 /* Desktop Adjustments */
@@ -341,4 +393,61 @@
   .video-info h2 {
     font-size: 18px;
   }
+}
+
+/* Balance Card */
+.balance-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.balance-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.balance-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.balance-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #00ff88;
+  font-family: monospace;
+}
+
+.affordability-indicator {
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+}
+
+.can-afford {
+  color: #00ff88;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.can-afford-partial {
+  color: #ffaa00;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cannot-afford {
+  color: #ff4747;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }

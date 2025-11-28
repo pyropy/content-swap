@@ -1,0 +1,147 @@
+/* Mini Account Bar - Persistent account status display */
+.mini-account-bar {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 1000;
+  min-width: 140px;
+}
+
+.mini-account-bar:hover {
+  background: rgba(0, 0, 0, 0.95);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(254, 44, 85, 0.2);
+}
+
+/* Account Status */
+.account-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.connected {
+  background: #00ff88;
+  animation: pulse-green 2s infinite;
+}
+
+.status-dot.disconnected {
+  background: rgba(255, 255, 255, 0.3);
+  animation: pulse-gray 2s infinite;
+}
+
+@keyframes pulse-green {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.4);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 0 4px rgba(0, 255, 136, 0);
+  }
+}
+
+@keyframes pulse-gray {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Account Info */
+.account-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.balance {
+  font-size: 13px;
+  font-weight: 600;
+  color: #00ff88;
+  font-family: monospace;
+}
+
+.channel {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: monospace;
+}
+
+.status-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+}
+
+/* Account Icon */
+.account-icon {
+  width: 24px;
+  height: 24px;
+  color: rgba(255, 255, 255, 0.7);
+  flex-shrink: 0;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .mini-account-bar {
+    bottom: 70px; /* Above bottom navigation */
+    left: 10px;
+    padding: 6px 12px;
+    min-width: 120px;
+  }
+
+  .balance {
+    font-size: 12px;
+  }
+
+  .channel {
+    font-size: 10px;
+  }
+
+  .status-text {
+    font-size: 12px;
+  }
+
+  .account-icon {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* Compact mode for very small screens */
+@media (max-width: 480px) {
+  .mini-account-bar {
+    min-width: auto;
+  }
+
+  .channel {
+    display: none;
+  }
+
+  .account-info {
+    flex-direction: row;
+    align-items: center;
+  }
+}

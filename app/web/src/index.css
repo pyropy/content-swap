@@ -4,13 +4,22 @@
   padding: 0;
 }
 
+html, body {
+  overflow: hidden;  /* Disable page scroll */
+  height: 100vh;     /* Full viewport height */
+}
+
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  min-height: 100vh;
   color: #e0e0e0;
+  margin: 0;
+  padding: 0;
 }
 
 #root {
-  min-height: 100vh;
+  height: 100vh;     /* Full viewport height */
+  overflow: hidden;  /* Prevent scroll at root level */
+  display: flex;
+  flex-direction: column;
 }

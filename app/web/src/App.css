@@ -1,7 +1,35 @@
-.container {
-  max-width: 900px;
-  margin: 0 auto;
+/* App Container */
+.app-container {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  background: #000;
+  overflow: hidden;
+}
+
+/* Purchased View */
+.purchased-view {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 60px;
+  background: #000;
+  overflow-y: auto;
   padding: 20px;
+}
+
+.view-header {
+  padding: 20px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 20px;
+}
+
+.view-header h1 {
+  color: white;
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
 }
 
 header {

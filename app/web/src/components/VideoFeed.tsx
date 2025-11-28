@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import VideoPlayer from './VideoPlayer';
+import { MiniAccountBar } from './MiniAccountBar';
 import type { VideoContentItem } from '../types';
 import './VideoFeed.css';
 
@@ -12,6 +13,7 @@ interface VideoFeedProps {
   clientBalance: string;
   onPurchase: (videoId: string, purchaseType: 'full' | 'segment', segmentName?: string) => Promise<string | undefined>;
   purchasing: string | null;
+  onAccountClick?: () => void;
 }
 
 export function VideoFeed({
@@ -22,7 +24,8 @@ export function VideoFeed({
   channelActive,
   clientBalance,
   onPurchase,
-  purchasing
+  purchasing,
+  onAccountClick
 }: VideoFeedProps) {
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [purchaseType, setPurchaseType] = useState<'full' | 'segment'>('full');
@@ -44,19 +47,21 @@ export function VideoFeed({
     setCurrentSegment(null);
   }, [currentVideoIndex]);
 
-  // Handle keyboard navigation
+  // Handle keyboard navigation with infinite scroll
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowUp' && currentVideoIndex > 0) {
-        setCurrentVideoIndex(prev => prev - 1);
-      } else if (e.key === 'ArrowDown' && currentVideoIndex < items.length - 1) {
-        setCurrentVideoIndex(prev => prev + 1);
+      if (e.key === 'ArrowUp') {
+        // Go to previous video, loop to last if at first
+        setCurrentVideoIndex(prev => prev === 0 ? items.length - 1 : prev - 1);
+      } else if (e.key === 'ArrowDown') {
+        // Go to next video, loop to first if at last
+        setCurrentVideoIndex(prev => (prev + 1) % items.length);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentVideoIndex, items.length]);
+  }, [items.length]);
 
   // Handle swipe gestures
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -70,28 +75,30 @@ export function VideoFeed({
     const diff = touchStartY.current - touchEndY;
 
     if (Math.abs(diff) > 50) {
-      if (diff > 0 && currentVideoIndex < items.length - 1) {
-        // Swipe up - next video
-        setCurrentVideoIndex(prev => prev + 1);
-      } else if (diff < 0 && currentVideoIndex > 0) {
-        // Swipe down - previous video
-        setCurrentVideoIndex(prev => prev - 1);
+      if (diff > 0) {
+        // Swipe up - next video with infinite loop
+        setCurrentVideoIndex(prev => (prev + 1) % items.length);
+      } else if (diff < 0) {
+        // Swipe down - previous video with infinite loop
+        setCurrentVideoIndex(prev => prev === 0 ? items.length - 1 : prev - 1);
       }
     }
 
     touchStartY.current = null;
   };
 
-  // Handle mouse wheel
+  // Handle mouse wheel with infinite scroll
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
 
-    if (e.deltaY > 50 && currentVideoIndex < items.length - 1) {
-      setCurrentVideoIndex(prev => prev + 1);
-    } else if (e.deltaY < -50 && currentVideoIndex > 0) {
-      setCurrentVideoIndex(prev => prev - 1);
+    if (e.deltaY > 50) {
+      // Scroll down - next video with infinite loop
+      setCurrentVideoIndex(prev => (prev + 1) % items.length);
+    } else if (e.deltaY < -50) {
+      // Scroll up - previous video with infinite loop
+      setCurrentVideoIndex(prev => prev === 0 ? items.length - 1 : prev - 1);
     }
-  }, [currentVideoIndex, items.length]);
+  }, [items.length]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -198,22 +205,18 @@ export function VideoFeed({
   };
 
   const handleVideoEnd = () => {
-    // Auto-advance to next video when current one ends
-    if (currentVideoIndex < items.length - 1) {
-      setCurrentVideoIndex(prev => prev + 1);
-    }
+    // Auto-advance to next video with infinite loop when current one ends
+    setCurrentVideoIndex(prev => (prev + 1) % items.length);
   };
 
   const handleSwipeUp = () => {
-    if (currentVideoIndex < items.length - 1) {
-      setCurrentVideoIndex(prev => prev + 1);
-    }
+    // Next video with infinite loop
+    setCurrentVideoIndex(prev => (prev + 1) % items.length);
   };
 
   const handleSwipeDown = () => {
-    if (currentVideoIndex > 0) {
-      setCurrentVideoIndex(prev => prev - 1);
-    }
+    // Previous video with infinite loop
+    setCurrentVideoIndex(prev => prev === 0 ? items.length - 1 : prev - 1);
   };
 
   if (items.length === 0) {
@@ -231,6 +234,14 @@ export function VideoFeed({
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
+      {/* Persistent account status bar */}
+      <MiniAccountBar
+        isConnected={walletConnected}
+        channelAddress={channelAddress}
+        balance={clientBalance}
+        onAccountClick={onAccountClick || (() => {})}
+      />
+
       {/* Main content area with video and sidebar */}
       <div className="feed-content">
         {/* Video Player */}
@@ -285,6 +296,27 @@ export function VideoFeed({
               <span className="icon">📥</span>
             </button>
           </div>
+
+          {/* Balance Display */}
+          {channelActive && (
+            <div className="balance-card">
+              <div className="balance-header">
+                <span className="balance-label">Channel Balance</span>
+                <span className="balance-value">{parseFloat(clientBalance).toFixed(4)} ETH</span>
+              </div>
+              {currentVideo && (
+                <div className="affordability-indicator">
+                  {canAfford(currentVideo.fullPrice) ? (
+                    <span className="can-afford">✓ Can afford full video</span>
+                  ) : canAfford(currentVideo.pricePerSegment) ? (
+                    <span className="can-afford-partial">✓ Can afford segments</span>
+                  ) : (
+                    <span className="cannot-afford">✗ Insufficient funds</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Purchase Card */}
           {currentVideo && !hasFullAccess[currentVideo.id] && !segmentPurchaseMode[currentVideo.id] && (
@@ -403,6 +435,28 @@ export function VideoFeed({
             </div>
           )}
 
+          {/* Navigation Arrows */}
+          <div className="navigation-arrows">
+            <button
+              className="nav-arrow nav-arrow-up"
+              onClick={() => setCurrentVideoIndex(prev => prev === 0 ? items.length - 1 : prev - 1)}
+              aria-label="Previous video"
+            >
+              <svg viewBox="0 0 24 24" width="24" height="24">
+                <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z" fill="currentColor"/>
+              </svg>
+            </button>
+            <button
+              className="nav-arrow nav-arrow-down"
+              onClick={() => setCurrentVideoIndex(prev => (prev + 1) % items.length)}
+              aria-label="Next video"
+            >
+              <svg viewBox="0 0 24 24" width="24" height="24">
+                <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z" fill="currentColor"/>
+              </svg>
+            </button>
+          </div>
+
           {/* Navigation Dots */}
           <div className="navigation-dots-sidebar">
             {items.map((_, index) => (
@@ -416,15 +470,6 @@ export function VideoFeed({
         </div>
       </div>
 
-      {/* Navigation Hints */}
-      <div className="navigation-hints">
-        {currentVideoIndex > 0 && (
-          <div className="hint-up">↑ Previous</div>
-        )}
-        {currentVideoIndex < items.length - 1 && (
-          <div className="hint-down">↓ Next</div>
-        )}
-      </div>
     </div>
   );
 }

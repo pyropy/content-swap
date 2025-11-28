@@ -33,6 +33,7 @@ export function useAppState() {
     updateChannelState,
     setupChannel: setupChannelBase,
     closeChannel: closeChannelBase,
+    resetChannelState,
   } = useChannels({ onLog: addLog });
 
   // Content hook
@@ -144,6 +145,7 @@ export function useAppState() {
     bobBalance,
     setupChannel,
     closeChannel,
+    resetChannelState,
 
     // Content
     catalog,
