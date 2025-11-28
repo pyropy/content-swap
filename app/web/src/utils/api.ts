@@ -1,6 +1,12 @@
-import type { ContentItem, Invoice, Commitment } from '../types';
+import type { ContentItem, VideoContentItem, Invoice, VideoInvoice, Commitment, PurchasedVideo } from '../types';
 
 export async function fetchCatalog(serverUrl: string): Promise<ContentItem[]> {
+  const response = await fetch(`${serverUrl}/catalog`);
+  const data = await response.json();
+  return data.catalog || [];
+}
+
+export async function fetchVideoCatalog(serverUrl: string): Promise<VideoContentItem[]> {
   const response = await fetch(`${serverUrl}/catalog`);
   const data = await response.json();
   return data.catalog || [];
@@ -44,22 +50,22 @@ export async function submitCommitment(
   serverUrl: string,
   invoiceId: string,
   commitment: Commitment,
-  aliceSignature: string,
-  aliceRevocationHash: string
-): Promise<{ bobSignature: string; revocationSecret: string }> {
+  partyASignature: string,
+  partyARevocationHash: string
+): Promise<{ partyBSignature: string; revocationSecret: string }> {
   const response = await fetch(`${serverUrl}/submit-commitment`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       invoiceId,
       commitment,
-      aliceSignature,
-      aliceRevocationHash,
+      partyASignature,
+      partyARevocationHash,
     }),
   });
   const data = await response.json();
   if (!data.success) throw new Error(data.error || 'Submission failed');
-  return { bobSignature: data.bobSignature, revocationSecret: data.revocationSecret };
+  return { partyBSignature: data.partyBSignature, revocationSecret: data.revocationSecret };
 }
 
 export async function registerChannel(
@@ -117,4 +123,82 @@ export async function signInitialCommitment(
   const data = await response.json();
   if (!data.success) throw new Error(data.error || 'Failed to get server signature');
   return { serverSignature: data.serverSignature, serverRevocationHash: data.serverRevocationHash };
+}
+
+// Video-specific API functions
+
+export async function getVideoPreviewUrl(serverUrl: string, videoId: string): string {
+  return `${serverUrl}/video/${videoId}/preview`;
+}
+
+export async function getVideoPlaylistUrl(serverUrl: string, videoId: string, channelAddress: string): string {
+  return `${serverUrl}/video/${videoId}/playlist.m3u8?channel=${channelAddress}`;
+}
+
+export async function purchaseVideo(
+  serverUrl: string,
+  videoId: string,
+  purchaseType: 'full' | 'segment',
+  channelAddress: string,
+  partyAAddress: string,
+  segmentName?: string
+): Promise<{ invoice: VideoInvoice }> {
+  const response = await fetch(`${serverUrl}/purchase-video`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      videoId,
+      purchaseType,
+      segmentName,
+      channelAddress,
+      partyAAddress,
+    }),
+  });
+  const data = await response.json();
+  if (!data.success) throw new Error(data.error || 'Video purchase request failed');
+  return { invoice: data.invoice };
+}
+
+export async function submitVideoPayment(
+  serverUrl: string,
+  invoiceId: string,
+  commitment: Commitment,
+  partyASignature: string,
+  partyARevocationHash: string
+): Promise<{ partyBSignature: string; accessGranted: string; message: string; revocationSecret?: string }> {
+  const response = await fetch(`${serverUrl}/submit-video-payment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      invoiceId,
+      commitment,
+      partyASignature,
+      partyARevocationHash,
+    }),
+  });
+  const data = await response.json();
+  if (!data.success) throw new Error(data.error || 'Video payment submission failed');
+  return {
+    partyBSignature: data.partyBSignature,
+    accessGranted: data.accessGranted,
+    message: data.message,
+    revocationSecret: data.revocationSecret
+  };
+}
+
+export async function checkSegmentAccess(
+  serverUrl: string,
+  videoId: string,
+  segmentName: string,
+  channelAddress: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(
+      `${serverUrl}/video/${videoId}/segment/${segmentName}?channel=${channelAddress}`,
+      { method: 'HEAD' }
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
 }

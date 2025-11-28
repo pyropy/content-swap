@@ -204,7 +204,7 @@ export function ChannelSetup({
                       {channel.address.slice(0, 10)}...{channel.address.slice(-8)}
                     </div>
                     <div className="channel-details">
-                      <span className="balance">Balance: {parseFloat(channel.aliceBalance).toFixed(4)} ETH</span>
+                      <span className="balance">Balance: {parseFloat(channel.partyABalance).toFixed(4)} ETH</span>
                       <span className="nonce">Nonce: {channel.nonce}</span>
                     </div>
                   </div>

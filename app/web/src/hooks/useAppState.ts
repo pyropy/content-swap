@@ -27,8 +27,8 @@ export function useAppState() {
     channels,
     channelAddress,
     currentNonce,
-    aliceBalance,
-    bobBalance,
+    partyABalance: aliceBalance,
+    partyBBalance: bobBalance,
     selectChannel,
     updateChannelState,
     setupChannel: setupChannelBase,
@@ -41,6 +41,7 @@ export function useAppState() {
     loadCatalog: loadCatalogBase,
     purchasedContent,
     purchaseContent: purchaseContentBase,
+    purchaseVideo: purchaseVideoBase,
     initializeRevocationSeed,
   } = useContent({ onLog: addLog });
 
@@ -48,6 +49,30 @@ export function useAppState() {
   const loadCatalog = useCallback(async () => {
     await loadCatalogBase(serverUrl);
   }, [loadCatalogBase, serverUrl]);
+
+  // Wrap purchaseVideo to inject config and update channel state
+  const purchaseVideo = useCallback(async (
+    videoId: string,
+    purchaseType: 'full' | 'segment',
+    segmentName?: string
+  ): Promise<{ success: boolean; revocationSecret?: string }> => {
+    if (!address || !isConnected) throw new Error('Wallet not connected');
+    if (!channelAddress) throw new Error('No active channel');
+
+    const result = await purchaseVideoBase(videoId, purchaseType, {
+      address,
+      serverUrl,
+      channelAddress,
+    }, segmentName);
+
+    if (result.success && result.newAlice !== undefined && result.newBob !== undefined && result.newNonce !== undefined) {
+      updateChannelState(result.newAlice, result.newBob, result.newNonce);
+    }
+
+    // For full video purchases, we'll get a revocation secret that needs to be passed through
+    // The VideoFeed component will handle storing it for decryption
+    return result;
+  }, [address, isConnected, purchaseVideoBase, serverUrl, channelAddress, updateChannelState]);
 
   // Wrap purchaseContent to inject config and update channel state
   const purchaseContent = useCallback(async (contentId: string): Promise<boolean> => {
@@ -125,6 +150,7 @@ export function useAppState() {
     loadCatalog,
     purchasedContent,
     purchaseContent,
+    purchaseVideo,
 
     // Server/Contract
     serverAddress,

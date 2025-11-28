@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { StatusBar } from './components/StatusBar';
 import { Tabs, type TabId } from './components/Tabs';
-import { Catalog } from './components/Catalog';
+import { VideoFeed } from './components/VideoFeed';
 import { Purchased } from './components/Purchased';
 import { Logs } from './components/Logs';
 import { ChannelSetup } from './components/ChannelSetup';
@@ -29,6 +29,7 @@ function App() {
     loadCatalog,
     purchasedContent,
     purchaseContent,
+    purchaseVideo,
     serverAddress,
     serverConnected,
     contractAbi,
@@ -72,76 +73,91 @@ function App() {
     connectToServer();
   }, []);
 
-  const handlePurchase = async (contentId: string) => {
-    setPurchasing(contentId);
+  const handlePurchase = async (videoId: string, purchaseType: 'full' | 'segment', segmentName?: string) => {
+    setPurchasing(videoId);
     try {
-      const success = await purchaseContent(contentId);
-      if (success) {
-        setActiveTab('purchased');
+      addLog(`Purchase request: ${videoId} (${purchaseType})`, 'info');
+
+      // Use the new purchaseVideo function for video purchases
+      const result = await purchaseVideo(videoId, purchaseType, segmentName);
+      if (result.success) {
+        addLog(`Successfully purchased: ${videoId} (${purchaseType})`, 'success');
+        // Return the revocation secret if present (for full video purchases)
+        return result.revocationSecret;
+      } else {
+        addLog(`Failed to purchase: ${videoId}`, 'error');
+        return undefined;
       }
+    } catch (error) {
+      addLog(`Purchase error: ${(error as Error).message}`, 'error');
     } finally {
       setPurchasing(null);
     }
   };
 
-  return (
-    <div className="container">
-      <header>
-        <h1>Payment Channel Content Client</h1>
-        <p>Purchase digital content using Lightning Network payment channels</p>
-      </header>
 
+  return (
+    <>
       <StatusBar
         walletAddress={address || null}
         channelAddress={channelAddress}
+        currentNonce={currentNonce}
         aliceBalance={aliceBalance}
         bobBalance={bobBalance}
-        currentNonce={currentNonce}
       />
 
-      <Tabs activeTab={activeTab} onTabChange={setActiveTab} />
+      {/* Video feed gets full screen without container */}
+      {activeTab === 'catalog' ? (
+        <>
+          <Tabs activeTab={activeTab} onTabChange={setActiveTab} />
+          <VideoFeed
+            items={catalog}
+            serverUrl={serverUrl}
+            channelAddress={channelAddress}
+            walletConnected={isConnected}
+            channelActive={!!channelAddress}
+            clientBalance={aliceBalance}
+            onPurchase={handlePurchase}
+            purchasing={purchasing}
+          />
+        </>
+      ) : (
+        <>
+          <Tabs activeTab={activeTab} onTabChange={setActiveTab} />
+          <div className="container">
+            {activeTab === 'purchased' && (
+              <Purchased items={purchasedContent} />
+            )}
 
-      {activeTab === 'catalog' && (
-        <Catalog
-          items={catalog}
-          walletConnected={isConnected}
-          channelActive={!!channelAddress}
-          clientBalance={aliceBalance}
-          onPurchase={handlePurchase}
-          purchasing={purchasing}
-        />
-      )}
+            {activeTab === 'logs' && (
+              <Logs logs={logs} />
+            )}
 
-      {activeTab === 'purchased' && (
-        <Purchased items={purchasedContent} />
-      )}
+            {activeTab === 'channel-setup' && (
+              <ChannelSetup
+                channels={channels}
+                activeChannelAddress={channelAddress}
+                serverAddress={serverAddress}
+                serverConnected={serverConnected}
+                walletConnected={isConnected}
+                contractLoaded={!!contractAbi}
+                onSelectChannel={selectChannel}
+                onSetupChannel={setupChannel}
+                onCloseChannel={closeChannel}
+              />
+            )}
 
-      {activeTab === 'logs' && (
-        <Logs logs={logs} />
+            {activeTab === 'settings' && (
+              <Settings
+                serverUrl={serverUrl}
+                onServerUrlChange={setServerUrl}
+                onServerUrlSave={handleServerUrlSave}
+              />
+            )}
+          </div>
+        </>
       )}
-
-      {activeTab === 'channel-setup' && (
-        <ChannelSetup
-          channels={channels}
-          activeChannelAddress={channelAddress}
-          serverAddress={serverAddress}
-          serverConnected={serverConnected}
-          walletConnected={isConnected}
-          contractLoaded={!!contractAbi}
-          onSelectChannel={selectChannel}
-          onSetupChannel={setupChannel}
-          onCloseChannel={closeChannel}
-        />
-      )}
-
-      {activeTab === 'settings' && (
-        <Settings
-          serverUrl={serverUrl}
-          onServerUrlChange={setServerUrl}
-          onServerUrlSave={handleServerUrlSave}
-        />
-      )}
-    </div>
+    </>
   );
 }
 

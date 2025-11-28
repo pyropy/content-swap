@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useSignMessage } from 'wagmi';
 import { keccak256, encodePacked, parseEther, type Address } from 'viem';
-import type { ContentItem, PurchasedContent } from '../types';
+import type { VideoContentItem, PurchasedContent } from '../types';
 import { decryptContent } from '../utils/crypto';
 import * as api from '../utils/api';
 
@@ -14,7 +14,7 @@ export function useContent(options: UseContentOptions = {}) {
 
   const { signMessageAsync } = useSignMessage();
 
-  const [catalog, setCatalog] = useState<ContentItem[]>([]);
+  const [catalog, setCatalog] = useState<VideoContentItem[]>([]);
   const [purchasedContent, setPurchasedContent] = useState<PurchasedContent[]>([]);
 
   // Revocation state
@@ -44,13 +44,91 @@ export function useContent(options: UseContentOptions = {}) {
 
   const loadCatalog = useCallback(async (serverUrl: string) => {
     try {
-      const items = await api.fetchCatalog(serverUrl);
+      const items = await api.fetchVideoCatalog(serverUrl);
       setCatalog(items);
-      log(`Loaded ${items.length} items`, 'success');
+      log(`Loaded ${items.length} videos`, 'success');
     } catch (error) {
       log(`Failed to fetch catalog: ${(error as Error).message}`, 'error');
     }
   }, [log]);
+
+  const purchaseVideo = useCallback(async (
+    videoId: string,
+    purchaseType: 'full' | 'segment',
+    config: {
+      address: string;
+      serverUrl: string;
+      channelAddress: string;
+    },
+    segmentName?: string
+  ): Promise<{ success: boolean; newAlice?: string; newBob?: string; newNonce?: number; revocationSecret?: string }> => {
+    const { address, serverUrl, channelAddress } = config;
+
+    try {
+      log(`Purchasing video: ${videoId} (${purchaseType})`, 'info');
+
+      // Step 1: Request video purchase invoice
+      const { invoice } = await api.purchaseVideo(
+        serverUrl,
+        videoId,
+        purchaseType,
+        channelAddress,
+        address, // This is partyAAddress
+        segmentName
+      );
+
+      log(`Received invoice for: ${invoice.title}`, 'info');
+
+      // Step 2: Generate revocation hash
+      const partyARevocationHash = generateRevocationHash(invoice.nonce);
+      log(`Generated revocation hash for nonce ${invoice.nonce}`, 'info');
+
+      // Step 3: Sign commitment
+      const commitment = invoice.commitment;
+      const commitmentData = encodePacked(
+        ['address', 'uint256', 'uint256', 'uint256', 'bytes32', 'bytes32'],
+        [
+          commitment.channelAddress as Address,
+          BigInt(commitment.nonce),
+          parseEther(commitment.partyABalance),
+          parseEther(commitment.partyBBalance),
+          partyARevocationHash as `0x${string}`,
+          commitment.partyBRevocationHash as `0x${string}`,
+        ]
+      );
+
+      const commitmentHash = keccak256(commitmentData);
+
+      const partyASignature = await signMessageAsync({
+        message: { raw: commitmentHash as `0x${string}` },
+      });
+      log('Commitment signed', 'success');
+
+      // Step 4: Submit video payment
+      const result = await api.submitVideoPayment(
+        serverUrl,
+        invoice.id,
+        commitment,
+        partyASignature,
+        partyARevocationHash
+      );
+
+      log(`Payment accepted: ${result.message}`, 'success');
+      log(`Access granted: ${result.accessGranted}`, 'success');
+
+      // Return balances for state update and include revocation secret for decryption
+      return {
+        success: true,
+        newAlice: commitment.partyABalance,
+        newBob: commitment.partyBBalance,
+        newNonce: invoice.nonce,
+        revocationSecret: result.revocationSecret
+      };
+    } catch (error) {
+      log(`Video purchase failed: ${(error as Error).message}`, 'error');
+      return { success: false };
+    }
+  }, [generateRevocationHash, signMessageAsync, log]);
 
   const purchaseContent = useCallback(async (
     contentId: string,
@@ -76,7 +154,7 @@ export function useContent(options: UseContentOptions = {}) {
       log(`Received invoice for: ${invoice.title}`, 'info');
 
       // Step 2: Generate revocation hash
-      const aliceRevocationHash = generateRevocationHash(invoice.nonce);
+      const partyARevocationHash = generateRevocationHash(invoice.nonce);
       log(`Generated revocation hash for nonce ${invoice.nonce}`, 'info');
 
       // Step 3: Sign commitment
@@ -86,16 +164,16 @@ export function useContent(options: UseContentOptions = {}) {
         [
           commitment.channelAddress as Address,
           BigInt(commitment.nonce),
-          parseEther(commitment.aliceBalance),
-          parseEther(commitment.bobBalance),
-          aliceRevocationHash as `0x${string}`,
-          commitment.bobRevocationHash as `0x${string}`,
+          parseEther(commitment.partyABalance),
+          parseEther(commitment.partyBBalance),
+          partyARevocationHash as `0x${string}`,
+          commitment.partyBRevocationHash as `0x${string}`,
         ]
       );
 
       const commitmentHash = keccak256(commitmentData);
 
-      const aliceSignature = await signMessageAsync({
+      const partyASignature = await signMessageAsync({
         message: { raw: commitmentHash as `0x${string}` },
       });
       log('Commitment signed', 'success');
@@ -105,8 +183,8 @@ export function useContent(options: UseContentOptions = {}) {
         serverUrl,
         invoice.id,
         commitment,
-        aliceSignature,
-        aliceRevocationHash
+        partyASignature,
+        partyARevocationHash
       );
       log('Payment accepted by server', 'success');
 
@@ -125,7 +203,7 @@ export function useContent(options: UseContentOptions = {}) {
 
       log(`Successfully purchased: ${invoice.title}`, 'success');
       // Return balances as strings (from commitment) for consistent formatting
-      return { success: true, newAlice: commitment.aliceBalance, newBob: commitment.bobBalance, newNonce: invoice.nonce };
+      return { success: true, newAlice: commitment.partyABalance, newBob: commitment.partyBBalance, newNonce: invoice.nonce };
     } catch (error) {
       log(`Purchase failed: ${(error as Error).message}`, 'error');
       return { success: false };
@@ -137,6 +215,7 @@ export function useContent(options: UseContentOptions = {}) {
     loadCatalog,
     purchasedContent,
     purchaseContent,
+    purchaseVideo,
     initializeRevocationSeed,
   };
 }

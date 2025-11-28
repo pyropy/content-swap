@@ -1,8 +1,10 @@
 .catalog-grid {
   display: grid;
-  gap: 15px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
 }
 
+/* Legacy content card styles (kept for compatibility) */
 .content-card {
   background: #252550;
   border-radius: 8px;
@@ -41,4 +43,227 @@
   color: #888;
   font-size: 0.8rem;
   margin-bottom: 10px;
+}
+
+/* Video card styles */
+.video-card {
+  background: #252550;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+
+.video-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* Video Thumbnail */
+.video-thumbnail-container {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  background: #1a1a3a;
+}
+
+.video-thumbnail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.video-icon {
+  font-size: 48px;
+  opacity: 0.8;
+}
+
+.video-duration {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.preview-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  border: 2px solid white;
+  padding: 12px 24px;
+  border-radius: 24px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  backdrop-filter: blur(5px);
+}
+
+.preview-button:hover {
+  background: rgba(0, 255, 136, 0.2);
+  border-color: #00ff88;
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+/* Video Info */
+.video-info {
+  padding: 16px;
+}
+
+.video-info h3 {
+  color: #fff;
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.video-description {
+  color: #888;
+  font-size: 14px;
+  margin: 0 0 12px 0;
+  line-height: 1.5;
+}
+
+.video-metadata {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.segment-count {
+  color: #00ff88;
+  font-size: 12px;
+  background: rgba(0, 255, 136, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Purchase Section */
+.purchase-section {
+  padding: 0 16px 16px;
+}
+
+.purchase-type-selector {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.type-btn {
+  flex: 1;
+  padding: 8px 12px;
+  background: #1a1a3a;
+  border: 1px solid #333;
+  color: #888;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.type-btn:hover {
+  border-color: #00ff88;
+  color: #fff;
+}
+
+.type-btn.active {
+  background: rgba(0, 255, 136, 0.1);
+  border-color: #00ff88;
+  color: #00ff88;
+}
+
+/* Price Info */
+.price-info {
+  margin-bottom: 12px;
+}
+
+.current-price {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.price-value {
+  color: #00ff88;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.price-unit {
+  color: #888;
+  font-size: 14px;
+}
+
+.price-detail {
+  color: #666;
+  font-size: 12px;
+}
+
+/* Purchase Button */
+.purchase-btn {
+  width: 100%;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.purchase-btn.btn-success {
+  background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+  color: #000;
+}
+
+.purchase-btn.btn-success:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 255, 136, 0.4);
+}
+
+.purchase-btn.btn-disabled {
+  background: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .catalog-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .video-card {
+    max-width: 100%;
+  }
+}
+
+@media (min-width: 1200px) {
+  .catalog-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }

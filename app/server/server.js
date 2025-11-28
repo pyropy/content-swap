@@ -6,42 +6,49 @@ import chalk from 'chalk';
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 /**
- * Lightning Network Payment Channel Content Server
+ * Lightning Network Payment Channel Video Streaming Server
  *
- * This server demonstrates how to sell digital content using Lightning Network
+ * This server demonstrates how to stream video content using Lightning Network
  * payment channels. The flow is:
  *
- * 1. Client requests content
- * 2. Server responds with encrypted content + invoice
- * 3. Client creates and signs a new commitment
- * 4. Server verifies and counter-signs
- * 5. Server reveals revocation secret (decryption key)
- * 6. Client can decrypt content
+ * 1. Client requests video catalog
+ * 2. Client can preview first segment for free
+ * 3. Client can purchase full video or pay per segment
+ * 4. Server verifies payment via signed commitments
+ * 5. Server streams HLS video segments to authorized clients
  */
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  exposedHeaders: ['X-Encrypted', 'X-Encryption-Format', 'X-Channel-Address']
+}));
 
 const PORT = 3000;
+
+// Get the directory path
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Server's wallet (PartyB - content seller)
 const partyBPrivateKey = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
 const provider = new ethers.JsonRpcProvider('http://localhost:8545');
-const partyB = new ethers.Wallet(partyBPrivateKey, provider);
+const serverWallet = new ethers.Wallet(partyBPrivateKey, provider);
 
 console.log(chalk.blue.bold('\n════════════════════════════════════════════════════════════════'));
-console.log(chalk.blue.bold('     PAYMENT CHANNEL CONTENT DELIVERY SERVER'));
+console.log(chalk.blue.bold('     PAYMENT CHANNEL VIDEO STREAMING SERVER'));
 console.log(chalk.blue.bold('════════════════════════════════════════════════════════════════\n'));
 
 console.log(chalk.yellow('Server Configuration:'));
-console.log(chalk.white(`  Operator: PartyB (Content Seller)`));
-console.log(chalk.gray(`  Address: ${partyB.address}`));
+console.log(chalk.white(`  Operator: PartyB (Video Content Provider)`));
+console.log(chalk.gray(`  Address: ${serverWallet.address}`));
 console.log(chalk.gray(`  Port: ${PORT}\n`));
 
-// Content Encryption utilities
+// Content Encryption utilities (keeping for potential future use with encrypted segments)
 class ContentEncryption {
   static encrypt(plaintext, revocationSecret) {
     const key = crypto.createHash('sha256').update(revocationSecret).digest();
@@ -122,31 +129,60 @@ const partyBRevocationManager = new RevocationKeyManager(
 // In-memory storage for channel states and content
 const channels = new Map();
 const pendingInvoices = new Map();
+const videoPurchases = new Map(); // Track full video purchases
+const segmentPurchases = new Map(); // Track per-segment purchases
 
-// Digital content catalog
-const contentCatalog = {
-  'content-1': {
-    id: 'content-1',
-    title: 'Secret Recipe',
-    description: 'The perfect chocolate cake recipe',
-    content: 'Hello World! This is the secret recipe for the perfect chocolate cake: Mix 2 cups flour, 1 cup sugar, 3/4 cup cocoa powder, 2 eggs, 1 cup milk. Bake at 350°F for 30 minutes.',
-    price: '0.1'
+// Video content catalog with metadata
+const videoCatalog = {
+  'video-1': {
+    id: 'video-1',
+    title: 'Amazing Nature Documentary',
+    description: 'Explore the wonders of nature in stunning 4K',
+    thumbnail: '/content/video1-thumb.jpg', // We'll serve a placeholder
+    duration: 54, // seconds
+    playlist: 'video1.m3u8',
+    segments: ['video10.ts', 'video11.ts', 'video12.ts', 'video13.ts', 'video14.ts', 'video15.ts', 'video16.ts'],
+    segmentCount: 7,
+    previewSegment: 'video10.ts', // First segment is free preview
+    pricePerSegment: '0.01', // ETH per segment
+    fullPrice: '0.05' // ETH for full video (discounted)
   },
-  'content-2': {
-    id: 'content-2',
-    title: 'Trading Algorithm',
-    description: 'Professional trading strategy',
-    content: 'CONFIDENTIAL ALGORITHM: Buy when RSI < 30 and MACD crosses above signal line. Sell when RSI > 70. Set stop loss at 2% and take profit at 5%. Never risk more than 1% per trade.',
-    price: '0.2'
+  'video-2': {
+    id: 'video-2',
+    title: 'Coding Tutorial: Build a DApp',
+    description: 'Learn to build decentralized applications step by step',
+    thumbnail: '/content/video2-thumb.jpg',
+    duration: 13, // seconds
+    playlist: 'video2.m3u8',
+    segments: ['video20.ts', 'video21.ts', 'video22.ts'],
+    segmentCount: 3,
+    previewSegment: 'video20.ts',
+    pricePerSegment: '0.015',
+    fullPrice: '0.035'
   },
-  'content-3': {
-    id: 'content-3',
-    title: 'API Access Key',
-    description: 'Premium API access credentials',
-    content: 'API_KEY=sk-proj-abc123xyz789def | Endpoint: https://api.premium-service.com/v1/ | Rate limit: 1000 requests/minute | Includes all premium features.',
-    price: '0.15'
+  'video-3': {
+    id: 'video-3',
+    title: 'Blockchain Explained',
+    description: 'Understanding blockchain technology in simple terms',
+    thumbnail: '/content/video3-thumb.jpg',
+    duration: 20, // seconds
+    playlist: 'video3.m3u8',
+    segments: ['video30.ts', 'video31.ts', 'video32.ts'],
+    segmentCount: 3,
+    previewSegment: 'video30.ts',
+    pricePerSegment: '0.012',
+    fullPrice: '0.03'
   }
 };
+
+// Track segment access per user/channel
+function getUserVideoKey(channelAddress, videoId) {
+  return `${channelAddress}_${videoId}`;
+}
+
+function getUserSegmentKey(channelAddress, videoId, segmentName) {
+  return `${channelAddress}_${videoId}_${segmentName}`;
+}
 
 // Load or initialize channel contract
 let channelContract = null;
@@ -174,7 +210,7 @@ async function loadChannelContract() {
     // For demo, we'll use environment variable or config file for channel address
     channelAddress = process.env.CHANNEL_ADDRESS;
     if (channelAddress) {
-      channelContract = new ethers.Contract(channelAddress, contractJson.abi, partyB);
+      channelContract = new ethers.Contract(channelAddress, contractJson.abi, serverWallet);
       console.log(chalk.green(`✓ Using existing channel: ${channelAddress}\n`));
     } else {
       console.log(chalk.yellow('⚠ No channel address provided. Use CHANNEL_ADDRESS env variable.\n'));
@@ -190,16 +226,23 @@ async function loadChannelContract() {
 // API Endpoints
 
 /**
- * GET /catalog - List available content
+ * GET /catalog - List available video content
  */
 app.get('/catalog', (req, res) => {
-  console.log(chalk.cyan('\n📚 Catalog request received'));
+  console.log(chalk.cyan('\n📹 Video catalog request received'));
 
-  const catalog = Object.values(contentCatalog).map(item => ({
+  const catalog = Object.values(videoCatalog).map(item => ({
     id: item.id,
     title: item.title,
     description: item.description,
-    price: item.price
+    thumbnail: item.thumbnail,
+    duration: item.duration,
+    segmentCount: item.segmentCount,
+    pricePerSegment: item.pricePerSegment,
+    fullPrice: item.fullPrice,
+    hasPreview: true,
+    segments: item.segments, // Include segments array
+    previewSegment: item.previewSegment // Include preview segment identifier
   }));
 
   res.json({
@@ -209,14 +252,318 @@ app.get('/catalog', (req, res) => {
 });
 
 /**
- * POST /request-content - Request specific content
- * Returns encrypted content, invoice, and unsigned commitment
+ * GET /video/:videoId/preview - Get free preview playlist
  */
-app.post('/request-content', async (req, res) => {
-  const { contentId, channelAddress: clientChannelAddress, partyAAddress } = req.body;
+app.get('/video/:videoId/preview', async (req, res) => {
+  const { videoId } = req.params;
 
-  console.log(chalk.cyan(`\n📦 Content request received:`));
-  console.log(chalk.gray(`  Content ID: ${contentId}`));
+  console.log(chalk.cyan(`\n🎬 Preview request for video: ${videoId}`));
+
+  const video = videoCatalog[videoId];
+  if (!video) {
+    return res.status(404).json({
+      success: false,
+      error: 'Video not found'
+    });
+  }
+
+  // Read the original playlist and modify it to only include the first segment
+  const playlistPath = path.join(__dirname, '..', 'content', video.playlist);
+
+  try {
+    const originalPlaylist = await fs.readFile(playlistPath, 'utf8');
+    const lines = originalPlaylist.split('\n');
+    const modifiedLines = [];
+    let segmentCount = 0;
+    let includeNext = false;
+
+    for (const line of lines) {
+      if (line.startsWith('#EXTM3U') || line.startsWith('#EXT-X-VERSION') ||
+          line.startsWith('#EXT-X-TARGETDURATION') || line.startsWith('#EXT-X-MEDIA-SEQUENCE')) {
+        modifiedLines.push(line);
+      } else if (line.startsWith('#EXTINF')) {
+        if (segmentCount === 0) {
+          modifiedLines.push(line);
+          includeNext = true;
+        }
+        segmentCount++;
+      } else if (includeNext && line.trim() && !line.startsWith('#')) {
+        // This is the segment filename - make it absolute
+        modifiedLines.push(`http://localhost:3000/video/${videoId}/preview-segment`);
+        includeNext = false;
+        break; // Stop after first segment
+      }
+    }
+
+    modifiedLines.push('#EXT-X-ENDLIST');
+    const previewPlaylist = modifiedLines.join('\n');
+
+    res.set({
+      'Content-Type': 'application/vnd.apple.mpegurl; charset=utf-8',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': '*',
+      'Content-Disposition': 'inline'
+    });
+    res.type('application/vnd.apple.mpegurl');
+    res.send(previewPlaylist);
+    console.log(chalk.green(`✓ Preview playlist served for video: ${videoId}`));
+  } catch (error) {
+    console.error(chalk.red('Failed to read playlist:'), error.message);
+    // Fallback to simple playlist
+    const segmentUrl = `http://localhost:3000/video/${videoId}/preview-segment`;
+    const previewPlaylist = `#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:10
+#EXT-X-MEDIA-SEQUENCE:0
+#EXTINF:10.0,
+${segmentUrl}
+#EXT-X-ENDLIST`;
+
+    res.set({
+      'Content-Type': 'application/vnd.apple.mpegurl; charset=utf-8',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': '*',
+      'Content-Disposition': 'inline'
+    });
+    res.type('application/vnd.apple.mpegurl');
+    res.send(previewPlaylist);
+  }
+});
+
+/**
+ * GET /video/:videoId/preview-segment - Get the actual preview segment file
+ */
+app.get('/video/:videoId/preview-segment', async (req, res) => {
+  const { videoId } = req.params;
+
+  const video = videoCatalog[videoId];
+  if (!video) {
+    return res.status(404).json({
+      success: false,
+      error: 'Video not found'
+    });
+  }
+
+  // Serve the preview segment
+  const segmentPath = path.join(__dirname, '..', 'content', video.previewSegment);
+
+  try {
+    const segmentData = await fs.readFile(segmentPath);
+    res.set({
+      'Content-Type': 'video/mp2t',
+      'Cache-Control': 'no-cache',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Content-Disposition': 'inline',
+      'Accept-Ranges': 'bytes',
+      'Content-Length': segmentData.length
+    });
+    res.send(segmentData);
+    console.log(chalk.green(`✓ Preview segment served: ${video.previewSegment}`));
+  } catch (error) {
+    console.error(chalk.red('Failed to serve preview:'), error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to load preview'
+    });
+  }
+});
+
+/**
+ * GET /video/:videoId/playlist.m3u8 - Get HLS playlist (requires purchase)
+ */
+app.get('/video/:videoId/playlist.m3u8', async (req, res) => {
+  const { videoId } = req.params;
+  const { channel } = req.query; // Channel address for authorization
+
+  console.log(chalk.cyan(`\n📺 Playlist request for video: ${videoId}`));
+  console.log(chalk.gray(`  Channel: ${channel}`));
+
+  const video = videoCatalog[videoId];
+  if (!video) {
+    return res.status(404).json({
+      success: false,
+      error: 'Video not found'
+    });
+  }
+
+  // Check if user has purchased full video OR is in segment purchase mode
+  const userVideoKey = getUserVideoKey(channel, videoId);
+  const hasFullAccess = videoPurchases.has(userVideoKey);
+
+  // In segment purchase mode, we allow playlist access
+  // Individual segments will be authorized when requested
+  if (!hasFullAccess) {
+    console.log(chalk.yellow(`⚠ Playlist access for segment purchase mode: ${videoId}`));
+    // Don't block access - allow playlist for segment-by-segment purchases
+  } else {
+    console.log(chalk.green(`✓ Full video access verified for: ${videoId}`));
+  }
+
+  // Read and serve the playlist
+  const playlistPath = path.join(__dirname, '..', 'content', video.playlist);
+
+  try {
+    let playlistContent = await fs.readFile(playlistPath, 'utf8');
+
+    // Modify playlist URLs to include authorization
+    playlistContent = playlistContent.replace(
+      /^(video\d+\.ts)$/gm,
+      `/video/${videoId}/segment/$1?channel=${channel}`
+    );
+
+    res.set({
+      'Content-Type': 'application/x-mpegURL',
+      'Cache-Control': 'no-cache'
+    });
+    res.send(playlistContent);
+    console.log(chalk.green(`✓ Playlist served for purchased video`));
+  } catch (error) {
+    console.error(chalk.red('Failed to serve playlist:'), error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to load playlist'
+    });
+  }
+});
+
+/**
+ * GET /video/:videoId/segment/:segmentName - Get video segment
+ */
+app.get('/video/:videoId/segment/:segmentName', async (req, res) => {
+  const { videoId, segmentName } = req.params;
+  const { channel } = req.query;
+
+  console.log(chalk.cyan(`\n🎞 Segment request: ${segmentName} for video: ${videoId}`));
+
+  const video = videoCatalog[videoId];
+  if (!video) {
+    return res.status(404).json({
+      success: false,
+      error: 'Video not found'
+    });
+  }
+
+  // Check if this is the preview segment (always free)
+  if (segmentName === video.previewSegment) {
+    const segmentPath = path.join(__dirname, '..', 'content', segmentName);
+    try {
+      const segmentData = await fs.readFile(segmentPath);
+      res.set({
+        'Content-Type': 'video/mp2t',
+        'Cache-Control': 'public, max-age=3600'
+      });
+      res.send(segmentData);
+      console.log(chalk.green(`✓ Preview segment served: ${segmentName}`));
+      return;
+    } catch (error) {
+      console.error(chalk.red('Failed to serve preview:'), error.message);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to load segment'
+      });
+    }
+  }
+
+  // Check authorization - either full video purchase or per-segment purchase
+  const userVideoKey = getUserVideoKey(channel, videoId);
+  const userSegmentKey = getUserSegmentKey(channel, videoId, segmentName);
+
+  const hasFullAccess = videoPurchases.has(userVideoKey);
+  const hasSegmentAccess = segmentPurchases.has(userSegmentKey);
+
+  if (!hasFullAccess && !hasSegmentAccess) {
+    console.log(chalk.red(`❌ Unauthorized segment access: ${segmentName}`));
+    return res.status(403).json({
+      success: false,
+      error: 'Segment not purchased. Purchase full video or this segment.'
+    });
+  }
+
+  // Serve the segment
+  const segmentPath = path.join(__dirname, '..', 'content', segmentName);
+
+  try {
+    const segmentData = await fs.readFile(segmentPath);
+
+    // Determine which revocation secret to use for encryption
+    let revocationSecret = null;
+    let accessType = '';
+
+    if (hasFullAccess) {
+      // For full video access, use the revocation secret from the full purchase
+      const purchase = videoPurchases.get(userVideoKey);
+      if (purchase && purchase.revocationSecret) {
+        revocationSecret = purchase.revocationSecret;
+        accessType = 'full access';
+      }
+    } else if (hasSegmentAccess) {
+      // For segment purchase, use the segment-specific revocation secret
+      const segmentPurchase = segmentPurchases.get(userSegmentKey);
+      if (segmentPurchase && segmentPurchase.revocationSecret) {
+        revocationSecret = segmentPurchase.revocationSecret;
+        accessType = 'segment purchase';
+      }
+    }
+
+    // If we have a revocation secret, encrypt the segment
+    if (revocationSecret) {
+      const encryptedData = ContentEncryption.encrypt(segmentData.toString('base64'), revocationSecret);
+
+      res.set({
+        'Content-Type': 'application/octet-stream',
+        'X-Encrypted': 'true',
+        'X-Encryption-Format': 'aes-256-gcm',
+        'Cache-Control': 'private, max-age=3600'
+      });
+      res.send(encryptedData.combined);
+      console.log(chalk.green(`✓ Encrypted segment served: ${segmentName} (${accessType})`));
+      return;
+    }
+
+    // Fallback: serve unencrypted (shouldn't happen in normal flow)
+    console.log(chalk.yellow(`⚠ Serving unencrypted segment: ${segmentName} (no revocation secret)`));
+    res.set({
+      'Content-Type': 'video/mp2t',
+      'Cache-Control': 'private, max-age=3600'
+    });
+    res.send(segmentData);
+    console.log(chalk.green(`✓ Segment served: ${segmentName} (unencrypted fallback)`));
+  } catch (error) {
+    console.error(chalk.red('Failed to serve segment:'), error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to load segment'
+    });
+  }
+});
+
+/**
+ * POST /purchase-video - Purchase full video or specific segment
+ */
+app.post('/purchase-video', async (req, res) => {
+  const {
+    videoId,
+    purchaseType, // 'full' or 'segment'
+    segmentName, // if purchaseType === 'segment'
+    channelAddress: clientChannelAddress,
+    partyAAddress
+  } = req.body;
+
+  console.log(chalk.cyan(`\n🎬 Video purchase request:`));
+  console.log(chalk.gray(`  Video ID: ${videoId}`));
+  console.log(chalk.gray(`  Purchase type: ${purchaseType}`));
+  if (segmentName) {
+    console.log(chalk.gray(`  Segment: ${segmentName}`));
+  }
   console.log(chalk.gray(`  Channel: ${clientChannelAddress}`));
   console.log(chalk.gray(`  PartyA address: ${partyAAddress}`));
 
@@ -247,18 +594,46 @@ app.post('/request-content', async (req, res) => {
   console.log(chalk.gray(`  Server-tracked nonce: ${currentNonce}`));
   console.log(chalk.gray(`  Server-tracked balances - PartyA: ${currentPartyABalance}, PartyB: ${currentPartyBBalance}`));
 
-  // Validate content exists
-  const content = contentCatalog[contentId];
-  if (!content) {
+  // Validate video exists
+  const video = videoCatalog[videoId];
+  if (!video) {
     return res.status(404).json({
       success: false,
-      error: 'Content not found'
+      error: 'Video not found'
+    });
+  }
+
+  // Determine price based on purchase type
+  let price;
+  let purchaseDescription;
+  if (purchaseType === 'full') {
+    price = parseFloat(video.fullPrice);
+    purchaseDescription = `Full video: ${video.title}`;
+  } else if (purchaseType === 'segment') {
+    if (!segmentName || !video.segments.includes(segmentName)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid segment'
+      });
+    }
+    // Don't charge for preview segment
+    if (segmentName === video.previewSegment) {
+      return res.status(400).json({
+        success: false,
+        error: 'Preview segment is free'
+      });
+    }
+    price = parseFloat(video.pricePerSegment);
+    purchaseDescription = `Segment ${segmentName} of ${video.title}`;
+  } else {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid purchase type. Use "full" or "segment"'
     });
   }
 
   // Check if client has sufficient funds
   const clientBalance = parseFloat(currentPartyABalance);
-  const price = parseFloat(content.price);
   if (clientBalance < price) {
     console.log(chalk.red(`\n❌ Insufficient funds:`));
     console.log(chalk.gray(`  Client balance: ${clientBalance} ETH`));
@@ -266,7 +641,7 @@ app.post('/request-content', async (req, res) => {
     return res.status(400).json({
       success: false,
       error: 'Insufficient funds',
-      required: content.price,
+      required: price.toString(),
       available: currentPartyABalance
     });
   }
@@ -275,11 +650,11 @@ app.post('/request-content', async (req, res) => {
   const newNonce = currentNonce + 1;
 
   // Calculate new balances after payment
-  const newPartyABalance = (parseFloat(currentPartyABalance) - parseFloat(content.price)).toString();
-  const newPartyBBalance = (parseFloat(currentPartyBBalance) + parseFloat(content.price)).toString();
+  const newPartyABalance = (parseFloat(currentPartyABalance) - price).toString();
+  const newPartyBBalance = (parseFloat(currentPartyBBalance) + price).toString();
 
   console.log(chalk.cyan('\n💰 Balance calculation:'));
-  console.log(chalk.gray(`  Payment amount: ${content.price} ETH`));
+  console.log(chalk.gray(`  Payment amount: ${price} ETH`));
   console.log(chalk.gray(`  New PartyA balance: ${newPartyABalance} ETH`));
   console.log(chalk.gray(`  New PartyB balance: ${newPartyBBalance} ETH`));
 
@@ -291,12 +666,6 @@ app.post('/request-content', async (req, res) => {
   console.log(chalk.gray(`  Nonce: ${newNonce}`));
   console.log(chalk.gray(`  Secret: ${partyBRevocationSecret.substring(0, 30)}...`));
   console.log(chalk.gray(`  Hash: ${partyBRevocationHash.substring(0, 30)}...`));
-
-  // Encrypt content with the revocation secret
-  const encryptedContent = ContentEncryption.encrypt(content.content, partyBRevocationSecret);
-
-  console.log(chalk.yellow('\n🔒 Encrypted content:'));
-  console.log(chalk.gray(`  Size: ${encryptedContent.combined.length} bytes`));
 
   // Create the commitment structure
   const commitment = {
@@ -318,16 +687,18 @@ app.post('/request-content', async (req, res) => {
   const invoiceId = ethers.keccak256(
     ethers.solidityPacked(
       ['address', 'uint256', 'string'],
-      [clientChannelAddress, newNonce, contentId]
+      [clientChannelAddress, newNonce, `${videoId}_${purchaseType}_${segmentName || 'full'}`]
     )
   );
 
   // Store pending invoice with commitment details
   pendingInvoices.set(invoiceId, {
-    contentId,
+    videoId,
+    purchaseType,
+    segmentName,
     channelAddress: clientChannelAddress,
     nonce: newNonce,
-    price: content.price,
+    price: price.toString(),
     partyBRevocationSecret,
     partyBRevocationHash,
     partyAAddress,
@@ -341,23 +712,23 @@ app.post('/request-content', async (req, res) => {
     success: true,
     invoice: {
       id: invoiceId,
-      contentId: content.id,
-      title: content.title,
-      price: content.price,
+      videoId: video.id,
+      title: video.title,
+      purchaseDescription,
+      purchaseType,
+      segmentName,
+      price: price.toString(),
       nonce: newNonce,
       partyBRevocationHash,
-      encryptedContent: encryptedContent.combined,
-      contentPreview: content.content.substring(0, 30) + '...',
       commitment: commitment // Include the unsigned commitment
     }
   });
 });
 
 /**
- * POST /submit-commitment - Submit signed commitment for payment
- * Client sends their signed commitment, server verifies and counter-signs
+ * POST /submit-video-payment - Submit signed commitment for video payment
  */
-app.post('/submit-commitment', async (req, res) => {
+app.post('/submit-video-payment', async (req, res) => {
   const {
     invoiceId,
     commitment,
@@ -365,7 +736,7 @@ app.post('/submit-commitment', async (req, res) => {
     partyARevocationHash
   } = req.body;
 
-  console.log(chalk.cyan(`\n💳 Commitment received for invoice: ${invoiceId.substring(0, 20)}...`));
+  console.log(chalk.cyan(`\n💳 Video payment commitment received for invoice: ${invoiceId.substring(0, 20)}...`));
 
   // Retrieve pending invoice
   const invoice = pendingInvoices.get(invoiceId);
@@ -448,7 +819,7 @@ app.post('/submit-commitment', async (req, res) => {
 
   // PartyB signs the commitment
   console.log(chalk.yellow('\n✍️ PartyB counter-signing commitment...'));
-  const partyBSignature = await partyB.signMessage(ethers.getBytes(commitmentHash));
+  const partyBSignature = await serverWallet.signMessage(ethers.getBytes(commitmentHash));
   console.log(chalk.gray(`  PartyB's signature: ${partyBSignature.substring(0, 30)}...`));
 
   // Store the completed commitment and update balances
@@ -468,11 +839,27 @@ app.post('/submit-commitment', async (req, res) => {
   console.log(chalk.green('✓ Commitment accepted and stored'));
   console.log(chalk.cyan(`  Updated balances - PartyA: ${channel.currentPartyABalance}, PartyB: ${channel.currentPartyBBalance}`));
 
-  // Reveal PartyB's revocation secret (which is the decryption key!)
-  const revocationSecret = invoice.partyBRevocationSecret;
-
-  console.log(chalk.magenta('\n🔓 Revealing revocation secret (decryption key):'));
-  console.log(chalk.gray(`  Secret: ${revocationSecret.substring(0, 40)}...`));
+  // Grant access based on purchase type
+  const video = videoCatalog[invoice.videoId];
+  if (invoice.purchaseType === 'full') {
+    const userVideoKey = getUserVideoKey(commitment.channelAddress, invoice.videoId);
+    videoPurchases.set(userVideoKey, {
+      timestamp: Date.now(),
+      price: invoice.price,
+      nonce: commitment.nonce,
+      revocationSecret: invoice.partyBRevocationSecret // Store the revocation secret for encryption
+    });
+    console.log(chalk.magenta(`\n🎬 Full video access granted: ${video.title}`));
+  } else if (invoice.purchaseType === 'segment') {
+    const userSegmentKey = getUserSegmentKey(commitment.channelAddress, invoice.videoId, invoice.segmentName);
+    segmentPurchases.set(userSegmentKey, {
+      timestamp: Date.now(),
+      price: invoice.price,
+      nonce: commitment.nonce,
+      revocationSecret: invoice.partyBRevocationSecret // Store unique revocation secret for this segment
+    });
+    console.log(chalk.magenta(`\n🎞 Segment access granted: ${invoice.segmentName}`));
+  }
 
   // Mark invoice as paid
   pendingInvoices.delete(invoiceId);
@@ -480,42 +867,11 @@ app.post('/submit-commitment', async (req, res) => {
   res.json({
     success: true,
     partyBSignature,
-    revocationSecret,
-    message: 'Payment accepted! Use the revocation secret to decrypt your content.'
+    accessGranted: invoice.purchaseType === 'full' ? 'full_video' : `segment_${invoice.segmentName}`,
+    message: `Payment accepted! You now have access to ${invoice.purchaseType === 'full' ? 'the full video' : `segment ${invoice.segmentName}`}.`,
+    // Include revocation secret for both full video and segment purchases so client can decrypt
+    revocationSecret: invoice.partyBRevocationSecret
   });
-});
-
-/**
- * POST /verify-decryption - Verify that client can decrypt content
- * This is optional - just for demonstration
- */
-app.post('/verify-decryption', (req, res) => {
-  const { encryptedContent, revocationSecret, expectedContentId } = req.body;
-
-  console.log(chalk.cyan('\n🔍 Decryption verification request'));
-
-  try {
-    const decrypted = ContentEncryption.decrypt(
-      { combined: encryptedContent },
-      revocationSecret
-    );
-
-    const originalContent = contentCatalog[expectedContentId]?.content;
-    const isValid = decrypted === originalContent;
-
-    console.log(chalk.green(`✓ Decryption ${isValid ? 'successful' : 'failed'}`));
-
-    res.json({
-      success: isValid,
-      decrypted: isValid ? decrypted.substring(0, 50) + '...' : null
-    });
-  } catch (error) {
-    console.log(chalk.red('❌ Decryption failed'));
-    res.json({
-      success: false,
-      error: 'Decryption failed'
-    });
-  }
 });
 
 /**
@@ -569,7 +925,7 @@ app.get('/contract', (req, res) => {
 app.get('/server-info', (req, res) => {
   res.json({
     success: true,
-    address: partyB.address,
+    address: serverWallet.address,
     defaultDeposit: '0.001'
   });
 });
@@ -611,8 +967,8 @@ app.post('/register-channel', async (req, res) => {
     console.log(chalk.gray(`  Balance: ${ethers.formatEther(balance)} ETH`));
     console.log(chalk.gray(`  State: ${stateIndex}`));
 
-    // Verify server is partyB
-    if (partyB.toLowerCase() !== partyB.address.toLowerCase()) {
+    // Verify server is partyB (info[1] is the partyB address from contract)
+    if (info[1].toLowerCase() !== serverWallet.address.toLowerCase()) {
       throw new Error('Server is not partyB in this channel');
     }
 
@@ -714,13 +1070,15 @@ app.post('/sign-initial-commitment', async (req, res) => {
     const partyB = info[1];
     const stateIndex = Number(info[3]);
 
+    console.log(info)
+
     // Verify channel is in FUNDING state
     if (stateIndex !== 0) {
       throw new Error('Channel is not in FUNDING state');
     }
 
     // Verify server is partyB
-    if (partyB.toLowerCase() !== partyB.address.toLowerCase()) {
+    if (partyB.toLowerCase() !== serverWallet.address.toLowerCase()) {
       throw new Error('Server is not partyB in this channel');
     }
 
@@ -749,7 +1107,7 @@ app.post('/sign-initial-commitment', async (req, res) => {
     console.log(chalk.gray(`  Hash: ${serverRevocationHash.substring(0, 30)}...`));
 
     // Sign the commitment hash
-    const serverSignature = await partyB.signMessage(ethers.getBytes(commitmentHash));
+    const serverSignature = await serverWallet.signMessage(ethers.getBytes(commitmentHash));
 
     console.log(chalk.green('✓ Commitment signed by server'));
     console.log(chalk.gray(`  Signature: ${serverSignature.substring(0, 30)}...`));
@@ -856,7 +1214,7 @@ app.post('/close-channel', async (req, res) => {
     );
 
     // Sign with PartyB's key
-    const partyBSignature = await partyB.signMessage(ethers.getBytes(closeHash));
+    const partyBSignature = await serverWallet.signMessage(ethers.getBytes(closeHash));
 
     console.log(chalk.green(`\n✓ Close message signed`));
     console.log(chalk.gray(`  Close hash: ${closeHash.substring(0, 30)}...`));
@@ -908,26 +1266,33 @@ app.get('/channel-status/:address', async (req, res) => {
   }
 });
 
+// Serve static content files (for direct access during development)
+app.use('/content', express.static(path.join(__dirname, '..', 'content')));
+
 // Initialize server
 async function startServer() {
   const abi = await loadChannelContract();
 
   app.listen(PORT, () => {
-    console.log(chalk.green.bold(`\n✓ Server running on http://localhost:${PORT}\n`));
+    console.log(chalk.green.bold(`\n✓ Video streaming server running on http://localhost:${PORT}\n`));
 
     console.log(chalk.yellow('Available endpoints:'));
-    console.log(chalk.white('  GET  /catalog                  - List available content'));
-    console.log(chalk.white('  POST /request-content          - Request encrypted content'));
-    console.log(chalk.white('  POST /submit-commitment        - Submit payment commitment'));
-    console.log(chalk.white('  POST /verify-decryption        - Verify decryption (optional)'));
-    console.log(chalk.white('  GET  /channel/:address         - Get channel state'));
-    console.log(chalk.white('  GET  /contract                 - Get contract ABI/bytecode'));
-    console.log(chalk.white('  GET  /server-info              - Get server address'));
-    console.log(chalk.white('  POST /sign-initial-commitment  - Sign initial commitment (before funding)'));
-    console.log(chalk.white('  POST /register-channel         - Register client-created channel'));
-    console.log(chalk.white('  POST /close-channel            - Request cooperative close'));
-    console.log(chalk.white('  GET  /channel-status/:addr     - On-chain channel status\n'));
+    console.log(chalk.white('  GET  /catalog                        - List available videos'));
+    console.log(chalk.white('  GET  /video/:videoId/preview         - Get free preview segment'));
+    console.log(chalk.white('  GET  /video/:videoId/playlist.m3u8   - Get HLS playlist (requires purchase)'));
+    console.log(chalk.white('  GET  /video/:videoId/segment/:name   - Get video segment'));
+    console.log(chalk.white('  POST /purchase-video                 - Purchase full video or segment'));
+    console.log(chalk.white('  POST /submit-video-payment           - Submit payment commitment'));
+    console.log(chalk.white('  GET  /channel/:address               - Get channel state'));
+    console.log(chalk.white('  GET  /contract                       - Get contract ABI/bytecode'));
+    console.log(chalk.white('  GET  /server-info                    - Get server address'));
+    console.log(chalk.white('  POST /sign-initial-commitment        - Sign initial commitment'));
+    console.log(chalk.white('  POST /register-channel               - Register client-created channel'));
+    console.log(chalk.white('  POST /close-channel                  - Request cooperative close'));
+    console.log(chalk.white('  GET  /channel-status/:addr           - On-chain channel status\n'));
 
+    console.log(chalk.cyan('🎬 Serving video content with HLS streaming'));
+    console.log(chalk.cyan('📹 ' + Object.keys(videoCatalog).length + ' videos available in catalog'));
     console.log(chalk.cyan('Waiting for client requests...\n'));
   });
 }
